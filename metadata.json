@@ -1,0 +1,7 @@
+{
+  "name": "KickOff AI - Soccer Tracker",
+  "description": "A modern soccer tracking application using Gemini AI to provide real-time results, standings, and betting odds with Google Search grounding.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
