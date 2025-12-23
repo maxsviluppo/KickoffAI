@@ -20,6 +20,7 @@ export const fetchSoccerData = async (
   useSearch: boolean = true,
   location?: { lat: number; lng: number }
 ): Promise<SportsData> => {
+  // Inizializziamo l'istanza subito prima dell'uso per assicurarci di usare la chiave aggiornata
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const locationContext = location ? `User coords: ${location.lat}, ${location.lng}.` : "";
@@ -44,7 +45,6 @@ export const fetchSoccerData = async (
       config: {
         ...(useSearch ? { tools: [{ googleSearch: {} }] } : {}),
         temperature: 0, 
-        // Ridotto budget per Flash per massimizzare velocità, mantenendo precisione
         thinkingConfig: { thinkingBudget: useThinking ? 15000 : 0 }
       },
     });
@@ -72,8 +72,9 @@ export const fetchSoccerData = async (
       lastUpdated: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
       sources: sources
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Fetch Error:", error);
+    // Propaghiamo l'errore originale per permettere ad App.tsx di leggere il codice 429
     throw error;
   }
 };
@@ -92,7 +93,7 @@ export const getMatchPrediction = async (home: string, away: string, useThinking
     });
     return parseAIResponse(response.text || "{}");
   } catch (error) {
-    return { prediction: "N/D", confidence: "0%", analysis: "Limite raggiunto." };
+    throw error;
   }
 };
 
@@ -109,6 +110,6 @@ export const getHistoricalAnalysis = async (history: HistoricalSnapshot[], useTh
     });
     return response.text || "Dati insufficienti.";
   } catch (error) {
-    return "Errore analisi.";
+    throw error;
   }
 };

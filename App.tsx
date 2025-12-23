@@ -1,13 +1,13 @@
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Layout from './components/Layout';
 import MatchCard from './components/MatchCard';
 import BettingModal from './components/BettingModal';
 import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
-import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot, GroundingSource } from './types';
+import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Wallet, Sparkles, ChevronRight, RotateCcw, Lightbulb, Power, MapPin, ShieldCheck, Activity, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, ArrowUpRight, TrendingUp, DollarSign, LineChart, Timer, Settings, Mail, User, Info, Key, Zap
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Zap
 } from 'lucide-react';
 
 const SOCCER_TIPS = [
@@ -264,10 +264,13 @@ const App: React.FC = () => {
 
   const handleOpenApiKeyDialog = async () => {
     try {
-      await window.aistudio?.openSelectKey();
-      setIsQuotaExhausted(false);
-      setError(null);
-      setTimeout(() => loadData(true), 500); 
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setIsQuotaExhausted(false);
+        setError(null);
+        // Ritentiamo il caricamento dopo la selezione della chiave
+        setTimeout(() => loadData(true), 1000);
+      }
     } catch (err) {
       addNotification("Errore", "Impossibile aprire la selezione chiave.", "info");
     }
@@ -278,7 +281,7 @@ const App: React.FC = () => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          addNotification("Localizzazione", "Coordinate sbloccate per l'IA.", "info");
+          addNotification("Localizzazione", "Coordinate sincronizzate.", "info");
         },
         (err) => console.warn("Geolocation blocked", err),
         { enableHighAccuracy: true }
@@ -306,7 +309,6 @@ const App: React.FC = () => {
     }
     setError(null);
 
-    // Timeout per ricerca live estesa (90s) o safe mode (25s)
     const timeoutThreshold = forceNoSearch ? 25000 : 90000;
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error("IA_TIMEOUT")), timeoutThreshold)
@@ -327,36 +329,27 @@ const App: React.FC = () => {
       setRetryWithNoSearch(false);
       setRefreshCountdown(30); 
     } catch (err: any) {
-      console.error("Load Error:", err);
+      console.error("Load Error Logged:", err);
+      const errorStr = typeof err === 'string' ? err : JSON.stringify(err);
       
-      const errorMsg = err?.message || JSON.stringify(err);
-      
-      if (errorMsg === "IA_TIMEOUT" || errorMsg.includes("timeout")) {
+      // Controllo specifico per quota esaurita (429)
+      if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || (err?.status === "RESOURCE_EXHAUSTED")) {
+        setIsQuotaExhausted(true);
+        setError("Quota API Gemini Esaurita. Per favore, inserisci la tua API Key personale.");
+        addNotification("Quota Esaurita", "Usa la tua API Key personale.", "info");
+      } else if (errorStr.includes("IA_TIMEOUT") || errorStr.includes("timeout")) {
         if (!forceNoSearch) {
-          addNotification("IA Lenta", "Tentativo di caricamento rapido senza ricerca...", "info");
           setRetryWithNoSearch(true);
           loadData(false, true, isSilent);
           return;
         }
-        setError("L'IA è troppo lenta. Consigliato inserire una API Key personale per sbloccare la priorità.");
-      } else if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-        setIsQuotaExhausted(true);
-        setError("Quota IA Esaurita. Per favore inserisci la tua API Key.");
+        setError("Timeout IA. Prova ad inserire una API Key personale per priorità maggiore.");
       } else if (!forceNoSearch && !retryWithNoSearch) {
         setRetryWithNoSearch(true);
         loadData(false, true, isSilent); 
         return;
       } else {
-        const cached = localStorage.getItem('kickoff_history');
-        if (cached) {
-          const parsed = JSON.parse(cached) as HistoricalSnapshot[];
-          if (parsed.length > 0) {
-            setData(parsed[0].data);
-            setError("Visualizzazione dati in cache per problemi di rete IA.");
-          }
-        } else {
-          setError("Errore critico. Prova a inserire la tua chiave API.");
-        }
+        setError("Errore durante il recupero dei dati. Controlla la chiave API.");
       }
     } finally {
       setLoading(false);
@@ -384,7 +377,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadData(true);
-  }, [thinkingMode, location]); 
+  }, [thinkingMode, location, loadData]); 
 
   const resetApp = () => {
     localStorage.clear();
@@ -436,7 +429,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Limite IA. Inserire API Key personale." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Limite IA raggiunto. Inserire API Key personale." });
     } finally {
       setPredicting(false);
     }
@@ -463,14 +456,11 @@ const App: React.FC = () => {
       const analysis = await getHistoricalAnalysis(history, thinkingMode);
       setHistoricalAnalysis(analysis);
     } catch (err) {
-      setHistoricalAnalysis("Errore. API Key personale richiesta per analisi massive.");
+      setHistoricalAnalysis("Errore analisi trend. Limite API Key.");
     } finally {
       setIsAnalyzingHistory(false);
     }
   };
-
-  const totalBetAmount = useMemo(() => betHistory.reduce((sum, b) => sum + b.amount, 0), [betHistory]);
-  const totalPotentialWin = useMemo(() => betHistory.reduce((sum, b) => sum + b.potentialWin, 0), [betHistory]);
 
   const renderContent = () => {
     if (loading && !data) {
@@ -481,26 +471,20 @@ const App: React.FC = () => {
             <div className="absolute inset-0 flex items-center justify-center">
                 <ShieldCheck className="w-10 h-10 text-emerald-600 animate-pulse" />
             </div>
-            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-black text-emerald-600 whitespace-nowrap">
-              TEMPO: {loadingSeconds}s
-            </div>
           </div>
-          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter">Ricerca Live IA...</h3>
+          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter">Sincronizzazione Live...</h3>
           <div className="bg-white p-8 rounded-[2.5rem] border border-emerald-100 shadow-2xl max-w-sm mx-auto flex flex-col items-center gap-6">
             <p className="text-slate-700 text-sm font-bold leading-relaxed italic">"{SOCCER_TIPS[currentTip]}"</p>
           </div>
           <div className="mt-12 flex flex-col items-center gap-6">
-             <div className="flex gap-4">
-                <button onClick={handleOpenApiKeyDialog} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center gap-2">
-                    <Key className="w-4 h-4" /> Inserisci API Key Personale
-                </button>
-                {loadingSeconds > 15 && (
-                  <button onClick={() => loadData(true, true)} className="bg-amber-100 text-amber-700 px-8 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 animate-in fade-in">
-                    <Zap className="w-4 h-4" /> Forza Safe Mode
-                  </button>
-                )}
-             </div>
-             <p className="text-xs text-slate-400 font-medium">Nota: Se l'IA impiega troppo tempo, la tua connessione o i server Gemini potrebbero essere saturi.</p>
+             <button onClick={handleOpenApiKeyDialog} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center gap-2">
+                 <Key className="w-4 h-4" /> Configura API Key Personale
+             </button>
+             {loadingSeconds > 15 && (
+               <button onClick={() => loadData(true, true)} className="bg-amber-100 text-amber-700 px-8 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 animate-in fade-in">
+                 <Zap className="w-4 h-4" /> Forza Modalità Veloce
+               </button>
+             )}
           </div>
         </div>
       );
@@ -632,7 +616,7 @@ const App: React.FC = () => {
                       <p className="text-emerald-200 text-sm font-medium">Analisi avanzata trend storici.</p>
                       <button onClick={handleAnalyzeHistory} disabled={isAnalyzingHistory || history.length < 2} className="w-full bg-lime-400 text-emerald-950 font-black py-5 rounded-[2rem] text-xs uppercase shadow-2xl shadow-lime-500/20">{isAnalyzingHistory ? "Analisi..." : "Avvia Predizione Storica"}</button>
                    </div>
-                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm text-emerald-50 italic border border-white/5">{historicalAnalysis || "Sincronizza almeno 2 snapshots per sbloccare l'analisi."}</div>
+                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm text-emerald-50 italic border border-white/5">{historicalAnalysis || "Sincronizza Snapshots per analisi."}</div>
                 </div>
              </div>
           </div>
@@ -641,8 +625,8 @@ const App: React.FC = () => {
         return (
           <div className="space-y-10 animate-in fade-in">
              <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 p-10 rounded-[3rem] text-white flex justify-between items-center shadow-xl">
-                <div><h2 className="text-3xl font-black tracking-tighter uppercase">Squadre del Cuore</h2></div>
-                <Star className="w-12 h-12 text-lime-400 fill-current animate-spin-slow" />
+                <div><h2 className="text-3xl font-black tracking-tighter uppercase">Squadre Preferite</h2></div>
+                <Star className="w-12 h-12 text-lime-400 fill-current" />
              </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {favorites.map(team => {
@@ -659,16 +643,17 @@ const App: React.FC = () => {
              <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 overflow-hidden p-12 space-y-12">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 space-y-4">
-                      <div className="flex items-center gap-3 mb-2"><Key className="w-5 h-5 text-emerald-600" /><h4 className="text-sm font-black uppercase text-emerald-900 tracking-tight">Gestione API Key Personale</h4></div>
-                      <p className="text-xs text-slate-600 leading-relaxed font-medium">L'inserimento di una chiave personale risolve gli errori di timeout e quota esaurita.</p>
-                      <button onClick={handleOpenApiKeyDialog} className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-[10px] uppercase shadow-lg shadow-emerald-100">Collega API Key</button>
-                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="block text-center text-[9px] font-bold text-emerald-500 uppercase hover:underline">Link Billing Documentazione</a>
+                      <div className="flex items-center gap-3 mb-2"><Key className="w-5 h-5 text-emerald-600" /><h4 className="text-sm font-black uppercase text-emerald-900 tracking-tight">Impostazioni API</h4></div>
+                      <p className="text-xs text-slate-600 font-medium">Usa una API Key personale per evitare limiti di quota.</p>
+                      <button onClick={handleOpenApiKeyDialog} className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-[10px] uppercase shadow-lg shadow-emerald-100">Configura API Key</button>
                    </div>
                    <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-4">
-                      <div className="flex items-center gap-3 mb-2"><Info className="w-5 h-5 text-slate-600" /><h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">Info Sviluppo</h4></div>
-                      <p className="text-xs text-slate-600 leading-relaxed font-medium">Creato da Castro Massimo per un'esperienza calcistica IA definitiva.</p>
-                      <a href="mailto:castromassimo@gmail.com" className="w-full bg-white border border-slate-200 text-slate-800 font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2"><Mail className="w-4 h-4" /> Supporto Tecnico</a>
+                      <div className="flex items-center gap-3 mb-2"><Info className="w-5 h-5 text-slate-600" /><h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">System Info</h4></div>
+                      <a href="mailto:castromassimo@gmail.com" className="w-full bg-white border border-slate-200 text-slate-800 font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2"><Mail className="w-4 h-4" /> Supporto</a>
                    </div>
+                </div>
+                <div className="pt-12 border-t border-slate-50 flex justify-center">
+                   <button onClick={resetApp} className="px-6 py-3 rounded-xl border border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center gap-2"><RefreshCw className="w-3 h-3" /> Reset Cache</button>
                 </div>
              </div>
           </div>
@@ -687,24 +672,29 @@ const App: React.FC = () => {
       <div className="mb-8 flex justify-between items-center bg-emerald-950 p-6 rounded-[2.5rem] border border-emerald-800 shadow-2xl relative overflow-hidden">
           <div className="flex items-center gap-4 relative z-10">
              <div className={`p-3 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12' : 'bg-emerald-900 text-emerald-500'}`}><BrainCircuit className="w-6 h-6" /></div>
-             <div><p className="text-white text-[10px] font-black uppercase tracking-[0.2em]">Analisi Tattica IA</p><p className="text-emerald-400 text-[9px] font-bold uppercase">{location ? 'Localizzazione OK' : 'GPS in attesa...'}</p></div>
+             <div><p className="text-white text-[10px] font-black uppercase tracking-[0.2em]">KickOff AI Engine</p><p className="text-emerald-400 text-[9px] font-bold uppercase">{location ? 'Local OK' : 'GPS...'}</p></div>
           </div>
           <div className="flex gap-3 relative z-10">
-            <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-8 py-3 rounded-2xl text-[10px] font-black transition-all border-2 ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}>{thinkingMode ? 'DEEP MODE ON' : 'IA STANDARD'}</button>
-            <button onClick={handleOpenApiKeyDialog} className={`p-3 rounded-2xl transition-all ${error ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-900 border border-emerald-800 text-emerald-400 hover:text-lime-400'}`} title="Inserisci API Key">
+            <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-8 py-3 rounded-2xl text-[10px] font-black transition-all border-2 ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}>{thinkingMode ? 'DEEP ANALYSIS ON' : 'STANDARD MODE'}</button>
+            <button onClick={handleOpenApiKeyDialog} className={`p-3 rounded-2xl transition-all ${isQuotaExhausted ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-900 border border-emerald-800 text-emerald-400 hover:text-lime-400'}`} title="API Key">
               <Key className="w-5 h-5" />
             </button>
           </div>
       </div>
 
-      {error && (
+      {(error || isQuotaExhausted) && (
         <div className="mb-6 bg-red-50 border-2 border-red-200 p-6 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between text-red-900 animate-in bounce-in shadow-xl gap-4">
           <div className="flex items-center gap-5">
             <div className="bg-red-100 p-4 rounded-2xl text-red-600"><AlertTriangle className="w-8 h-8" /></div>
-            <div><p className="text-sm font-black uppercase tracking-tight">Errore di Caricamento</p><p className="text-xs font-medium opacity-80">{error}</p></div>
+            <div>
+              <p className="text-sm font-black uppercase tracking-tight">
+                {isQuotaExhausted ? "Quota API Esaurita" : "Status Sistema"}
+              </p>
+              <p className="text-xs font-medium opacity-80">{error}</p>
+            </div>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
-             <button onClick={handleOpenApiKeyDialog} className="flex-1 md:flex-none px-8 py-4 bg-emerald-600 text-white rounded-2xl shadow-lg hover:bg-emerald-700 transition-all font-black text-[10px] uppercase flex items-center justify-center gap-2"><Key className="w-4 h-4" /> Inserisci la tua API Key</button>
+             <button onClick={handleOpenApiKeyDialog} className="flex-1 md:flex-none px-8 py-4 bg-emerald-600 text-white rounded-2xl shadow-lg hover:bg-emerald-700 transition-all font-black text-[10px] uppercase flex items-center justify-center gap-2"><Key className="w-4 h-4" /> Inserisci API Key</button>
              <button onClick={() => loadData(true)} className="p-4 bg-white text-emerald-600 rounded-2xl border border-emerald-100"><RefreshCw className="w-5 h-5" /></button>
           </div>
         </div>
@@ -714,7 +704,7 @@ const App: React.FC = () => {
       
       {data?.sources && data.sources.length > 0 && (
         <div className="mt-8 p-6 bg-white rounded-[2rem] border border-emerald-50 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Search className="w-3 h-3 text-emerald-500" /> Fonti Grounding Google Search</h4>
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Search className="w-3 h-3 text-emerald-500" /> Fonti di Ricerca Google Search</h4>
           <div className="flex flex-wrap gap-3">
             {data.sources.map((source, idx) => (
               <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100/50">{source.title || 'Sito Web'} <ExternalLink className="w-3 h-3" /></a>
@@ -727,13 +717,13 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-emerald-950/60 backdrop-blur-xl animate-in fade-in">
            <div className="bg-white w-full max-w-sm rounded-[3rem] overflow-hidden shadow-2xl border-2 border-emerald-50">
               <div className="bg-emerald-900 p-8 text-white flex justify-between items-center">
-                 <div><h4 className="font-black text-sm uppercase text-emerald-400 tracking-widest">IA Tactic</h4><p className="font-black text-xl tracking-tighter truncate max-w-[200px]">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
+                 <div><h4 className="font-black text-sm uppercase text-emerald-400 tracking-widest">Predizione IA</h4><p className="font-black text-xl tracking-tighter truncate max-w-[200px]">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
                  <button onClick={() => setPredictModalMatch(null)} className="p-2 hover:bg-emerald-800 rounded-full transition-colors"><X className="w-6 h-6" /></button>
               </div>
               <div className="p-10 text-center">
-                {predicting ? <div className="py-12 flex flex-col items-center gap-4"><RefreshCw className="w-10 h-10 text-emerald-600 animate-spin" /><span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Consultando i dati...</span></div> : (
+                {predicting ? <div className="py-12 flex flex-col items-center gap-4"><RefreshCw className="w-10 h-10 text-emerald-600 animate-spin" /><span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Analisi...</span></div> : (
                   <div className="space-y-8 animate-in zoom-in">
-                    <div className="bg-emerald-50 p-10 rounded-[2.5rem] border-2 border-emerald-100 shadow-inner"><p className="text-4xl font-black text-emerald-950 tracking-tighter">{prediction?.prediction}</p><div className="inline-block px-4 py-1.5 bg-lime-400 text-emerald-950 rounded-full text-[9px] font-black uppercase mt-4">Precisione: {prediction?.confidence}</div></div>
+                    <div className="bg-emerald-50 p-10 rounded-[2.5rem] border-2 border-emerald-100 shadow-inner"><p className="text-4xl font-black text-emerald-950 tracking-tighter">{prediction?.prediction}</p><div className="inline-block px-4 py-1.5 bg-lime-400 text-emerald-950 rounded-full text-[9px] font-black uppercase mt-4">Confidenza: {prediction?.confidence}</div></div>
                     <p className="text-sm text-slate-700 font-bold italic">"{prediction?.analysis}"</p>
                   </div>
                 )}
