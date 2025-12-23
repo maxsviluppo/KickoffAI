@@ -181,7 +181,6 @@ const App: React.FC = () => {
   const [selectedLeague, setSelectedLeague] = useState('All');
   const [liveOnly, setLiveOnly] = useState(false);
 
-  // Controllo iniziale della chiave API
   const checkApiKeyStatus = useCallback(async () => {
     if (window.aistudio) {
       const selected = await window.aistudio.hasSelectedApiKey();
@@ -281,7 +280,6 @@ const App: React.FC = () => {
     try {
       if (window.aistudio) {
         await window.aistudio.openSelectKey();
-        // Procediamo assumendo successo per mitigare race conditions
         setHasApiKey(true);
         setIsQuotaExhausted(false);
         setError(null);
@@ -318,7 +316,6 @@ const App: React.FC = () => {
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
     if ((loading || isRefreshing) && !isInitial) return;
     
-    // Verifica preventiva della chiave se non siamo in caricamento silenzioso
     if (!isSilent) {
       const keyOk = await checkApiKeyStatus();
       if (!keyOk) return;
@@ -345,18 +342,16 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Critical Load Error:", err);
       const errorStr = JSON.stringify(err);
-      const errorMsg = err?.message || "";
       
-      // Rilevamento Quota Esaurita (429) o Entità Non Trovata (Errore Chiave)
-      const is429 = errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("429");
+      const is429 = errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED");
       const isKeyError = errorStr.includes("Requested entity was not found");
 
       if (is429 || isKeyError) {
         setIsQuotaExhausted(true);
-        setHasApiKey(false); // Forza la visualizzazione della schermata di selezione
+        setHasApiKey(false); 
         setError(is429 
-          ? "Quota API Gemini Esaurita. Seleziona una chiave API personale da un progetto con fatturazione attiva." 
-          : "Chiave API non valida o progetto non trovato. Seleziona nuovamente la tua chiave API.");
+          ? "Quota API Gemini Esaurita. Seleziona una chiave API personale con fatturazione attiva." 
+          : "Chiave API non valida. Seleziona nuovamente la tua chiave API.");
         addNotification("Errore API", "Azione richiesta sulla chiave API.", "info");
       } else if (errorStr.includes("timeout")) {
         if (!forceNoSearch) {
@@ -364,9 +359,9 @@ const App: React.FC = () => {
           loadData(false, true, isSilent);
           return;
         }
-        setError("Tempo di risposta eccessivo. Prova ad usare una chiave API personale.");
+        setError("Tempo di risposta eccessivo. Usa una chiave API personale.");
       } else {
-        setError("Errore di comunicazione con l'IA. Verifica la tua chiave API.");
+        setError("Errore IA. Verifica la tua chiave API.");
       }
     } finally {
       setLoading(false);
@@ -448,7 +443,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Limite API raggiunto. Verifica la tua chiave API." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Verifica quota API personale." });
     } finally {
       setPredicting(false);
     }
@@ -482,7 +477,6 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // Schermata Obbligatoria per Chiave API / Quota Esaurita
     if (!hasApiKey && !loading) {
       return (
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in zoom-in-95">
@@ -494,8 +488,8 @@ const App: React.FC = () => {
            </h2>
            <p className="text-slate-600 max-w-md mb-10 leading-relaxed font-medium">
              {isQuotaExhausted 
-                ? "Hai esaurito la quota della chiave API corrente. Per continuare ad usare l'app senza interruzioni, seleziona una chiave API personale collegata a un progetto con fatturazione attiva."
-                : "Per accedere ai dati live e alle analisi IA, devi collegare la tua chiave API Gemini personale."}
+                ? "Hai esaurito la quota della chiave API. Per continuare, seleziona una chiave personale collegata a un progetto con fatturazione attiva (Pay-as-you-go)."
+                : "Per accedere ai dati live e alle analisi IA, collega la tua chiave API Gemini personale."}
            </p>
            <div className="flex flex-col gap-4 w-full max-w-xs">
               <button 
@@ -513,7 +507,6 @@ const App: React.FC = () => {
                 >
                   <Info className="w-4 h-4" /> Guida Fatturazione API
                 </a>
-                <p className="text-[9px] text-slate-400 font-bold uppercase">Usa un progetto GCP con piano a consumo (Pay-as-you-go)</p>
               </div>
            </div>
         </div>
@@ -618,7 +611,7 @@ const App: React.FC = () => {
                          <span className="text-xs font-black uppercase">{s.timestamp}</span>
                          <ChevronRight className="w-5 h-5" />
                        </button>
-                     )) : <div className="p-12 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-[2rem] font-bold italic">Nessun log disponibile.</div>}
+                     )) : <div className="p-12 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-[2rem] font-bold italic">Nessun log.</div>}
                    </div>
                    <div className="lg:col-span-2">
                      {selectedHistoricalData ? (
@@ -649,7 +642,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ))}
-                  {betHistory.length === 0 && <div className="col-span-full py-20 text-center bg-white/40 rounded-[2.5rem] border-2 border-dashed border-emerald-100"><p className="text-slate-400 font-bold italic">Nessuna scommessa registrata.</p></div>}
+                  {betHistory.length === 0 && <div className="col-span-full py-20 text-center bg-white/40 rounded-[2.5rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Nessuna giocata.</div>}
                </div>
              )}
           </div>
@@ -661,10 +654,10 @@ const App: React.FC = () => {
                 <h3 className="text-4xl font-black mb-6 flex items-center gap-4 uppercase tracking-tighter"><Sparkles className="w-10 h-10 text-lime-400 animate-pulse" /> Tactical Engine</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="space-y-4">
-                      <p className="text-emerald-200 text-sm font-medium">Analisi predittiva basata sui dati storici correnti.</p>
-                      <button onClick={handleAnalyzeHistory} disabled={isAnalyzingHistory || history.length < 2} className="w-full bg-lime-400 text-emerald-950 font-black py-5 rounded-[2rem] text-xs uppercase shadow-2xl shadow-lime-500/20 active:scale-95 transition-transform">{isAnalyzingHistory ? "Analisi in corso..." : "Avvia Predizione Trend"}</button>
+                      <p className="text-emerald-200 text-sm font-medium">Analisi predittiva sui dati storici.</p>
+                      <button onClick={handleAnalyzeHistory} disabled={isAnalyzingHistory || history.length < 2} className="w-full bg-lime-400 text-emerald-950 font-black py-5 rounded-[2rem] text-xs uppercase shadow-2xl shadow-lime-500/20 active:scale-95 transition-transform">{isAnalyzingHistory ? "Analisi..." : "Avvia Predizione Trend"}</button>
                    </div>
-                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm text-emerald-50 italic border border-white/5 leading-relaxed">{historicalAnalysis || "Sincronizza gli snapshot per attivare l'analisi tattica."}</div>
+                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm text-emerald-50 italic border border-white/5 leading-relaxed">{historicalAnalysis || "Sincronizza gli snapshot."}</div>
                 </div>
              </div>
           </div>
@@ -685,7 +678,7 @@ const App: React.FC = () => {
                   })}
                </div>
              ) : (
-               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Non hai ancora aggiunto squadre ai preferiti.</div>
+               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Nessuna squadra preferita.</div>
              )}
           </div>
         );
@@ -696,16 +689,12 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 space-y-4">
                       <div className="flex items-center gap-3 mb-2"><Key className="w-6 h-6 text-emerald-600" /><h4 className="text-sm font-black uppercase text-emerald-900 tracking-tight">API Key Gemini</h4></div>
-                      <p className="text-xs text-slate-600 font-medium">Usa la tua chiave personale per sbloccare tutti i limiti di quota e ottenere risposte istantanee.</p>
+                      <p className="text-xs text-slate-600 font-medium">Usa la tua chiave personale per sbloccare tutti i limiti di quota.</p>
                       <button onClick={handleOpenApiKeyDialog} className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-[10px] uppercase shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors">Modifica Chiave API</button>
-                   </div>
-                   <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-4">
-                      <div className="flex items-center gap-3 mb-2"><Info className="w-6 h-6 text-slate-600" /><h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">Info Sistema</h4></div>
-                      <a href="mailto:castromassimo@gmail.com" className="w-full bg-white border border-slate-200 text-slate-800 font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"><Mail className="w-4 h-4" /> Supporto Tecnico</a>
                    </div>
                 </div>
                 <div className="pt-12 border-t border-slate-50 flex justify-center">
-                   <button onClick={resetApp} className="px-8 py-4 rounded-xl border-2 border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center gap-3 hover:bg-red-50 transition-colors"><RefreshCw className="w-4 h-4" /> Reset Completo Cache</button>
+                   <button onClick={resetApp} className="px-8 py-4 rounded-xl border-2 border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center gap-3 hover:bg-red-50 transition-colors"><RefreshCw className="w-4 h-4" /> Reset Completo</button>
                 </div>
              </div>
           </div>
@@ -746,7 +735,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-4 w-full md:w-auto">
-             <button onClick={handleOpenApiKeyDialog} className="flex-1 md:flex-none px-8 py-5 bg-emerald-600 text-white rounded-[2rem] shadow-xl hover:bg-emerald-700 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3"><Key className="w-5 h-5" /> Collega API Key</button>
+             <button onClick={handleOpenApiKeyDialog} className="flex-1 md:flex-none px-8 py-5 bg-emerald-600 text-white rounded-[2rem] shadow-xl hover:bg-emerald-700 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95"><Key className="w-5 h-5" /> Collega API Key</button>
              <button onClick={() => loadData(true)} className="p-5 bg-white text-emerald-600 rounded-[1.5rem] border-2 border-emerald-100 hover:bg-emerald-50 transition-colors"><RefreshCw className="w-6 h-6" /></button>
           </div>
         </div>
@@ -767,7 +756,7 @@ const App: React.FC = () => {
 
       {predictModalMatch && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-emerald-950/80 backdrop-blur-2xl animate-in fade-in">
-           <div className="bg-white w-full max-w-md rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-emerald-50 animate-in zoom-in-95">
+           <div className="bg-white w-full max-md rounded-[3.5rem] overflow-hidden shadow-2xl border-4 border-emerald-50 animate-in zoom-in-95">
               <div className="bg-emerald-900 p-10 text-white flex justify-between items-center relative">
                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-lime-400 to-emerald-400"></div>
                  <div><h4 className="font-black text-[10px] uppercase text-emerald-400 tracking-[0.3em] mb-2">Tactical AI Prediction</h4><p className="font-black text-2xl tracking-tighter truncate max-w-[250px]">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
