@@ -20,21 +20,21 @@ export const fetchSoccerData = async (
   useSearch: boolean = true,
   location?: { lat: number; lng: number }
 ): Promise<SportsData> => {
-  // Inizializziamo l'istanza subito prima dell'uso per assicurarci di usare la chiave aggiornata
+  // CRITICAL: Always create a new instance right before use to get latest API Key from dialog
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const locationContext = location ? `User coords: ${location.lat}, ${location.lng}.` : "";
+  const locationContext = location ? `Coordinate utente: ${location.lat}, ${location.lng}.` : "";
 
   const prompt = `
-    [RAPIDO] Fornisci JSON match calcio LIVE/RECENTI (Serie A, Premier, Leghe EU).
-    Includi Napoli-Bologna se giocata oggi/ieri.
+    [URGENTE] Fornisci JSON match calcio LIVE/RECENTI per Serie A, Premier League, La Liga e Bundesliga.
+    Usa Google Search per dati reali di OGGI.
     Context: ${locationContext}
-    REGOLE: Solo JSON, no commenti. Lingua: IT.
+    REGOLE: Restituisci esclusivamente un oggetto JSON valido, no testo discorsivo. Lingua: Italiano.
     
-    JSON Schema:
+    JSON Schema richiesto:
     {
-      "matches": [{"id":"uuid","homeTeam":"A","awayTeam":"B","score":"0-0","status":"Live/FT","league":"Serie A","odds":{"home":2.0,"draw":3.0,"away":4.0},"time":"HH:MM"}],
-      "standings": {"Serie A": [{"rank":1,"team":"Inter","played":25,"points":66,"goals":"50-12","formSequence":["W"]}]}
+      "matches": [{"id":"uuid","homeTeam":"Squadra A","awayTeam":"Squadra B","score":"0-0","status":"Live/Terminata","league":"Serie A","odds":{"home":2.0,"draw":3.0,"away":4.0},"time":"Ora/Minuto"}],
+      "standings": {"Serie A": [{"rank":1,"team":"Squadra","played":25,"points":60,"goals":"40-20","formSequence":["W","D"]}]}
     }
   `;
 
@@ -58,7 +58,7 @@ export const fetchSoccerData = async (
         chunks.forEach((chunk: any) => {
           if (chunk.web) {
             sources.push({ 
-              title: chunk.web.title || 'Info Live', 
+              title: chunk.web.title || 'Dettaglio Fonte', 
               uri: chunk.web.uri 
             });
           }
@@ -74,14 +74,13 @@ export const fetchSoccerData = async (
     };
   } catch (error: any) {
     console.error("Gemini Fetch Error:", error);
-    // Propaghiamo l'errore originale per permettere ad App.tsx di leggere il codice 429
     throw error;
   }
 };
 
 export const getMatchPrediction = async (home: string, away: string, useThinking: boolean = false): Promise<AIPrediction> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Predict ${home}-${away}. JSON: {"prediction":"X","confidence":"60%","analysis":"Brief text"}`;
+  const prompt = `Analizza e prevedi l'esito di ${home} vs ${away}. JSON: {"prediction":"1/X/2","confidence":"X%","analysis":"Testo breve"}`;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -99,7 +98,7 @@ export const getMatchPrediction = async (home: string, away: string, useThinking
 
 export const getHistoricalAnalysis = async (history: HistoricalSnapshot[], useThinking: boolean = false): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Analizza trend: ${JSON.stringify(history.slice(0,2))}. Breve sintesi IT.`;
+  const prompt = `Analizza i trend storici di questi snapshot calcistici: ${JSON.stringify(history.slice(0,3))}. Fornisci una sintesi tattica in italiano.`;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -108,7 +107,7 @@ export const getHistoricalAnalysis = async (history: HistoricalSnapshot[], useTh
         thinkingConfig: { thinkingBudget: useThinking ? 10000 : 0 }
       }
     });
-    return response.text || "Dati insufficienti.";
+    return response.text || "Dati insufficienti per l'analisi.";
   } catch (error) {
     throw error;
   }
