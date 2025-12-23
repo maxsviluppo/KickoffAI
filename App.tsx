@@ -5,9 +5,9 @@ import MatchCard from './components/MatchCard';
 import BettingModal from './components/BettingModal';
 import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
-import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
+import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot, FavoriteTeam, TeamNotifications } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, Key, Info, ExternalLink, ClipboardList, ChevronRight, Clock
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, Key, Info, ExternalLink, ClipboardList, ChevronRight, Clock, Bell, BellRing, Target, Flag
 } from 'lucide-react';
 
 declare global {
@@ -121,10 +121,25 @@ const App: React.FC = () => {
   const [historicalAnalysis, setHistoricalAnalysis] = useState<string | null>(null);
   const [isAnalyzingHistory, setIsAnalyzingHistory] = useState(false);
 
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    const saved = localStorage.getItem('kickoff_favorites');
-    return saved ? JSON.parse(saved) : [];
+  // Gestione avanzata preferiti con notifiche
+  const [favorites, setFavorites] = useState<FavoriteTeam[]>(() => {
+    const saved = localStorage.getItem('kickoff_favorites_v2');
+    if (saved) return JSON.parse(saved);
+    // Migrazione vecchi preferiti se presenti
+    const oldSaved = localStorage.getItem('kickoff_favorites');
+    if (oldSaved) {
+       const oldNames = JSON.parse(oldSaved) as string[];
+       return oldNames.map(name => ({
+         name,
+         notifications: { goals: true, finalResult: true, matchStart: true }
+       }));
+    }
+    return [];
   });
+
+  useEffect(() => {
+    localStorage.setItem('kickoff_favorites_v2', JSON.stringify(favorites));
+  }, [favorites]);
 
   const [balance, setBalance] = useState<number>(() => {
     const saved = localStorage.getItem('kickoff_balance');
@@ -211,12 +226,30 @@ const App: React.FC = () => {
     loadData(true);
   }, [thinkingMode, location, loadData, checkApiKey]);
 
-  const toggleFavorite = (team: string) => {
+  const toggleFavorite = (teamName: string) => {
     setFavorites(prev => {
-      const newFavs = prev.includes(team) ? prev.filter(t => t !== team) : [...prev, team];
-      localStorage.setItem('kickoff_favorites', JSON.stringify(newFavs));
-      return newFavs;
+      const exists = prev.find(f => f.name === teamName);
+      if (exists) {
+        return prev.filter(f => f.name !== teamName);
+      } else {
+        return [...prev, {
+          name: teamName,
+          notifications: { goals: true, finalResult: true, matchStart: true }
+        }];
+      }
     });
+  };
+
+  const updateFavoriteNotification = (teamName: string, type: keyof TeamNotifications) => {
+    setFavorites(prev => prev.map(f => {
+      if (f.name === teamName) {
+        return {
+          ...f,
+          notifications: { ...f.notifications, [type]: !f.notifications[type] }
+        };
+      }
+      return f;
+    }));
   };
 
   const leagues = useMemo(() => {
@@ -276,7 +309,7 @@ const App: React.FC = () => {
     if (favorites.length === 0) return;
     setIsAnalyzingHistory(true);
     try {
-      const result = await getHistoricalAnalysis(history, favorites, thinkingMode);
+      const result = await getHistoricalAnalysis(history, favorites.map(f => f.name), thinkingMode);
       setHistoricalAnalysis(result);
     } catch (err) {
       addNotification("Errore Analisi", "Impossibile generare il report strategico.", "info");
@@ -284,6 +317,8 @@ const App: React.FC = () => {
       setIsAnalyzingHistory(false);
     }
   }, [favorites, history, thinkingMode, addNotification]);
+
+  const favoriteNames = useMemo(() => favorites.map(f => f.name), [favorites]);
 
   const renderContent = () => {
     if (!hasApiKey && activeTab !== Tab.SETTINGS) {
@@ -318,7 +353,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div><h2 className="text-xl font-black text-emerald-950 uppercase">Match in Corso</h2></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {matchesByStatus.live.map(m => (
-                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} />
+                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favoriteNames.includes(m.homeTeam)} isFavoriteAway={favoriteNames.includes(m.awayTeam)} />
                   ))}
                 </div>
               </section>
@@ -330,7 +365,7 @@ const App: React.FC = () => {
                 <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide">
                   {matchesByStatus.upcoming.length > 0 ? matchesByStatus.upcoming.map(m => (
                     <div key={m.id} className="min-w-[300px] flex-shrink-0">
-                      <MatchCard match={m} onPredict={handlePredict} onBet={setBettingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} showOdds={true} />
+                      <MatchCard match={m} onPredict={handlePredict} onBet={setBettingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favoriteNames.includes(m.homeTeam)} isFavoriteAway={favoriteNames.includes(m.awayTeam)} showOdds={true} />
                     </div>
                   )) : <div className="text-slate-400 italic font-medium">Nessuna partita programmata a breve.</div>}
                 </div>
@@ -338,10 +373,10 @@ const App: React.FC = () => {
 
             {/* ULTIMI 10 RISULTATI */}
             <section className="space-y-4">
-                <div className="flex items-center gap-2"><Trophy className="w-5 h-5 text-emerald-600" /><h2 className="text-xl font-black text-emerald-950 uppercase">Ultimi Risultati</h2></div>
+                <div className="flex items-center gap-2"><Trophy className="w-5 h-5 text-emerald-600" /><h2 className="text-xl font-black text-emerald-950 uppercase">Ultimi 10 Risultati</h2></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {matchesByStatus.finished.slice(0, 10).map(m => (
-                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} />
+                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onToggleFavorite={toggleFavorite} isFavoriteHome={favoriteNames.includes(m.homeTeam)} isFavoriteAway={favoriteNames.includes(m.awayTeam)} />
                   ))}
                 </div>
             </section>
@@ -353,35 +388,106 @@ const App: React.FC = () => {
           <div className="space-y-6 animate-in fade-in">
              <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
              <div className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden">
-                <div className="bg-emerald-900 text-white p-6 font-black uppercase text-xs tracking-widest">Tabellone Risultati Pratico</div>
+                <div className="bg-emerald-900 text-white p-6 font-black uppercase text-xs tracking-widest flex justify-between items-center">
+                   <span>Tabellone Risultati</span>
+                   <ClipboardList className="w-5 h-5 text-lime-400" />
+                </div>
                 <div className="divide-y divide-slate-100">
                    {(liveOnly ? matchesByStatus.live : [...matchesByStatus.live, ...matchesByStatus.finished]).map(m => (
                      <div key={m.id} onClick={() => handlePredict(m.homeTeam, m.awayTeam)} className="p-4 md:p-6 hover:bg-emerald-50 cursor-pointer transition-colors flex items-center justify-between group">
                         <div className="flex items-center gap-3 md:gap-8 flex-1">
-                           <span className="text-[9px] font-black text-slate-400 uppercase w-16 hidden md:block">{m.league}</span>
+                           <span className="text-[9px] font-black text-slate-400 uppercase w-20 hidden lg:block truncate">{m.league}</span>
                            <div className="flex-1 flex items-center justify-end gap-3 text-right">
-                              <span className="font-bold text-slate-800 text-sm">{m.homeTeam}</span>
+                              <span className="font-bold text-slate-800 text-sm hidden sm:inline">{m.homeTeam}</span>
                               <img src={`https://avatar.vercel.sh/${m.homeTeam}?size=24`} className="w-5 h-5 rounded" />
                            </div>
-                           <div className="px-3 py-1 bg-slate-900 text-white font-mono font-black text-lg rounded-lg min-w-[60px] text-center shadow-lg">
+                           <div className="px-3 py-1 bg-slate-900 text-white font-mono font-black text-lg rounded-lg min-w-[65px] text-center shadow-lg border border-white/10">
                               {m.score}
                            </div>
                            <div className="flex-1 flex items-center gap-3 text-left">
                               <img src={`https://avatar.vercel.sh/${m.awayTeam}?size=24`} className="w-5 h-5 rounded" />
-                              <span className="font-bold text-slate-800 text-sm">{m.awayTeam}</span>
+                              <span className="font-bold text-slate-800 text-sm hidden sm:inline">{m.awayTeam}</span>
                            </div>
                         </div>
                         <div className="ml-4 flex items-center gap-4">
-                           <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${m.status.includes('FT') || m.status.includes('Finale') ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-600 animate-pulse'}`}>{m.status}</span>
+                           <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full border ${m.status.toLowerCase().includes('ft') || m.status.toLowerCase().includes('finale') ? 'bg-slate-50 text-slate-400 border-slate-100' : 'bg-red-50 text-red-600 border-red-100 animate-pulse'}`}>{m.status}</span>
                            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
                         </div>
                      </div>
                    ))}
                    {matchesByStatus.live.length === 0 && matchesByStatus.finished.length === 0 && (
-                      <div className="p-10 text-center text-slate-400 italic">Nessun risultato disponibile.</div>
+                      <div className="p-16 text-center text-slate-400 italic font-medium">Nessun risultato trovato per i criteri selezionati.</div>
                    )}
                 </div>
              </div>
+          </div>
+        );
+
+      case Tab.FAVORITES:
+        return (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 p-10 rounded-[3rem] text-white flex justify-between items-center shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-lime-400/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+                <div>
+                  <h2 className="text-3xl font-black tracking-tighter uppercase mb-1">Mie Squadre</h2>
+                  <p className="text-emerald-300 text-xs font-medium uppercase tracking-widest">Configura notifiche push personalizzate</p>
+                </div>
+                <Star className="w-12 h-12 text-lime-400 fill-current" />
+             </div>
+
+             {favorites.length > 0 ? (
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {favorites.map(fav => (
+                    <div key={fav.name} className="bg-white p-8 rounded-[2.5rem] border border-emerald-50 shadow-sm hover:shadow-md transition-shadow">
+                       <div className="flex items-center justify-between mb-8">
+                          <div className="flex items-center gap-4">
+                             <div className="p-3 bg-emerald-50 rounded-2xl">
+                                <img src={`https://avatar.vercel.sh/${fav.name}?size=40`} className="w-10 h-10 rounded-lg" alt="" />
+                             </div>
+                             <div>
+                                <h4 className="font-black text-slate-800 uppercase text-lg tracking-tight">{fav.name}</h4>
+                                <span className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1.5">
+                                   <BellRing className="w-3 h-3" /> Alert Attivi
+                                </span>
+                             </div>
+                          </div>
+                          <button onClick={() => toggleFavorite(fav.name)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                            <X className="w-6 h-6" />
+                          </button>
+                       </div>
+
+                       <div className="grid grid-cols-3 gap-3">
+                          <NotificationToggle 
+                             active={fav.notifications.matchStart} 
+                             label="Inizio" 
+                             icon={<Clock className="w-3.5 h-3.5" />} 
+                             onClick={() => updateFavoriteNotification(fav.name, 'matchStart')}
+                          />
+                          <NotificationToggle 
+                             active={fav.notifications.goals} 
+                             label="Gol" 
+                             icon={<Target className="w-3.5 h-3.5" />} 
+                             onClick={() => updateFavoriteNotification(fav.name, 'goals')}
+                          />
+                          <NotificationToggle 
+                             active={fav.notifications.finalResult} 
+                             label="Finale" 
+                             icon={<Flag className="w-3.5 h-3.5" />} 
+                             onClick={() => updateFavoriteNotification(fav.name, 'finalResult')}
+                          />
+                       </div>
+                    </div>
+                  ))}
+               </div>
+             ) : (
+               <div className="py-24 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 flex flex-col items-center gap-6">
+                  <div className="bg-emerald-50 p-6 rounded-full"><Star className="w-12 h-12 text-emerald-200" /></div>
+                  <div className="space-y-2">
+                    <p className="text-slate-500 font-black uppercase text-sm tracking-widest">Nessun preferito salvato</p>
+                    <p className="text-xs text-slate-400 font-medium max-w-xs mx-auto">Aggiungi squadre dalla Home cliccando sulla stella per ricevere aggiornamenti in tempo reale.</p>
+                  </div>
+               </div>
+             )}
           </div>
         );
 
@@ -472,7 +578,7 @@ const App: React.FC = () => {
                 {favorites.length > 0 && (
                    <div className="flex flex-wrap gap-2 mt-6 relative z-10">
                       {favorites.map(f => (
-                         <span key={f} className="px-3 py-1 bg-emerald-800/50 border border-emerald-700 rounded-lg text-[10px] font-black uppercase text-lime-400">{f}</span>
+                         <span key={f.name} className="px-3 py-1 bg-emerald-800/50 border border-emerald-700 rounded-lg text-[10px] font-black uppercase text-lime-400">{f.name}</span>
                       ))}
                    </div>
                 )}
@@ -491,30 +597,6 @@ const App: React.FC = () => {
           </div>
         );
 
-      case Tab.FAVORITES:
-        return (
-          <div className="space-y-10 animate-in fade-in">
-             <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 p-10 rounded-[3rem] text-white flex justify-between items-center shadow-xl">
-                <div><h2 className="text-3xl font-black tracking-tighter uppercase">Le Mie Squadre</h2></div>
-                <Star className="w-12 h-12 text-lime-400 fill-current" />
-             </div>
-             {favorites.length > 0 ? (
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {favorites.map(team => (
-                    <div key={team} className="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center justify-between">
-                       <div className="flex items-center gap-4">
-                          <img src={`https://avatar.vercel.sh/${team}?size=32`} className="w-8 h-8 rounded-lg" alt="" />
-                          <span className="font-black text-slate-800 uppercase text-xs">{team}</span>
-                       </div>
-                       <button onClick={() => toggleFavorite(team)} className="text-red-500"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-               </div>
-             ) : (
-               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Nessuna squadra preferita.</div>
-             )}
-          </div>
-        );
       default: return null;
     }
   };
@@ -582,5 +664,19 @@ const App: React.FC = () => {
     </Layout>
   );
 };
+
+const NotificationToggle: React.FC<{ active: boolean; label: string; icon: React.ReactNode; onClick: () => void }> = ({ active, label, icon, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+      active 
+        ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-100' 
+        : 'bg-slate-50 border-slate-100 text-slate-400 grayscale'
+    }`}
+  >
+    {icon}
+    <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
+  </button>
+);
 
 export default App;

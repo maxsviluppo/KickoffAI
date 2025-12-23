@@ -42,6 +42,17 @@ export interface SportsData {
   sources: GroundingSource[];
 }
 
+export interface TeamNotifications {
+  goals: boolean;
+  finalResult: boolean;
+  matchStart: boolean;
+}
+
+export interface FavoriteTeam {
+  name: string;
+  notifications: TeamNotifications;
+}
+
 export interface HistoricalSnapshot {
   id: string;
   timestamp: string;
