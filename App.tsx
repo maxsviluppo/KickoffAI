@@ -160,24 +160,10 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState('All');
   const [liveOnly, setLiveOnly] = useState(false);
-
-  const checkApiKeyStatus = useCallback(async () => {
-    if (window.aistudio) {
-      const selected = await window.aistudio.hasSelectedApiKey();
-      setHasApiKey(selected);
-      return selected;
-    }
-    return true;
-  }, []);
-
-  useEffect(() => {
-    checkApiKeyStatus();
-  }, [checkApiKeyStatus]);
 
   const [history, setHistory] = useState<HistoricalSnapshot[]>(() => {
     try {
@@ -235,13 +221,6 @@ const App: React.FC = () => {
 
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
     if ((loading || isRefreshing) && !isInitial) return;
-    
-    // Controllo silenzioso della chiave prima di procedere
-    const keyOk = await checkApiKeyStatus();
-    if (!keyOk && !isSilent) {
-      addNotification("Azione Necessaria", "Configura la API Key tramite l'icona in alto.", "info");
-      return;
-    }
 
     if (isSilent) setIsRefreshing(true);
     else setLoading(true);
@@ -267,7 +246,7 @@ const App: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification, checkApiKeyStatus]);
+  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification]);
 
   useEffect(() => {
     loadData(true);
@@ -318,7 +297,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Verifica API Key tramite l'icona in alto." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore. Verifica API Key in alto." });
     } finally {
       setPredicting(false);
     }
@@ -368,7 +347,7 @@ const App: React.FC = () => {
        return (
         <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic flex flex-col items-center gap-4">
            <AlertTriangle className="w-12 h-12 text-emerald-300" />
-           <p className="max-w-xs">Dati non disponibili. Assicurati di aver configurato la API Key correttamente cliccando sull'icona della chiave nell'intestazione.</p>
+           <p className="max-w-xs leading-relaxed">Dati temporaneamente non disponibili.<br/>Assicurati di aver configurato la API Key cliccando sull'icona della chiave nell'intestazione.</p>
         </div>
        )
     }
@@ -519,17 +498,6 @@ const App: React.FC = () => {
                          </div>
                       </div>
                    </div>
-                   
-                   <div className="bg-emerald-50 rounded-[2.5rem] p-8 border border-emerald-100">
-                      <h5 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-4">Metriche Analizzate</h5>
-                      <div className="space-y-2">
-                         {['Trend Punti', 'Efficienza Goal', 'Sequenze Forma', 'Contestualizzazione Leghe'].map(m => (
-                            <div key={m} className="flex items-center gap-2 text-[10px] font-black text-emerald-600 uppercase">
-                               <CheckCircle2 className="w-3.5 h-3.5" /> {m}
-                            </div>
-                         ))}
-                      </div>
-                   </div>
                 </div>
              </div>
           </div>
@@ -541,7 +509,7 @@ const App: React.FC = () => {
                 <div className="flex flex-col items-center text-center space-y-4">
                     <Settings className="w-12 h-12 text-emerald-600" />
                     <h3 className="text-xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
-                    <p className="text-sm text-slate-600 max-w-sm">La gestione della API Key è ora centralizzata nel pulsante in alto a destra.</p>
+                    <p className="text-sm text-slate-600 max-w-sm font-medium">La gestione della API Key è ora centralizzata nel pulsante in alto a destra per un'esperienza più pulita.</p>
                 </div>
                 <div className="flex justify-center pt-8 border-t border-slate-100">
                    <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-red-500 font-black text-[10px] uppercase flex items-center gap-2 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset Cache</button>

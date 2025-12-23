@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tab } from '../types';
-import { Trophy, Star, Radio, TrendingUp, BrainCircuit, History, Wallet, Settings, Key, Info } from 'lucide-react';
+import { Trophy, Star, Radio, TrendingUp, BrainCircuit, Wallet, Settings, Key, Info, ExternalLink } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,7 +24,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
 
   useEffect(() => {
     checkKey();
-    const interval = setInterval(checkKey, 5000);
+    const interval = setInterval(checkKey, 3000);
     return () => clearInterval(interval);
   }, [checkKey]);
 
@@ -39,6 +39,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
   const handleOpenKey = async () => {
     if (window.aistudio) {
         await window.aistudio.openSelectKey();
+        // Optimistic update to trigger UI response
         setHasKey(true);
     }
   };
@@ -56,6 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
           </div>
           
           <div className="flex items-center gap-3">
+            {/* CENTRALIZED KEY CONTROL */}
             <div className="relative group">
                 <button 
                     onClick={handleOpenKey}
@@ -64,28 +66,36 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
                         ? 'bg-emerald-700/50 border-emerald-600 text-lime-400 hover:bg-emerald-600' 
                         : 'bg-red-500/20 border-red-500 text-red-400 animate-pulse'
                     }`}
-                    title="Configura API Key"
                 >
                     <Key className="w-5 h-5" />
-                    {!hasKey && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-emerald-800"></span>}
+                    {!hasKey && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-emerald-800"></span>
+                      </span>
+                    )}
                 </button>
                 
-                {/* Tooltip / Mini Guide */}
-                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-emerald-100 p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] text-slate-800">
-                    <p className="text-[10px] font-black uppercase text-emerald-600 mb-2 flex items-center gap-2">
-                        <Info className="w-3 h-3" /> Guida API Gemini
+                {/* GUIDE TOOLTIP */}
+                <div className="absolute top-full right-0 mt-3 w-72 bg-white rounded-[1.5rem] shadow-2xl border border-emerald-100 p-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] text-slate-800 translate-y-1 group-hover:translate-y-0">
+                    <div className="flex items-center gap-2 mb-3">
+                        <div className="bg-emerald-100 p-1.5 rounded-lg"><Info className="w-3.5 h-3.5 text-emerald-600" /></div>
+                        <p className="text-[11px] font-black uppercase text-emerald-700 tracking-wider">Gestione API Key</p>
+                    </div>
+                    <p className="text-xs font-medium leading-relaxed mb-4 text-slate-500">
+                      Per sbloccare le analisi IA e i dati in tempo reale, collega una chiave API Gemini valida (progetto GCP con fatturazione attiva raccomandato).
                     </p>
-                    <p className="text-[11px] font-medium leading-relaxed mb-3">
-                        Per dati real-time e analisi IA illimitate, clicca per selezionare una chiave API personale (Pay-as-you-go raccomandata).
-                    </p>
-                    <a 
-                      href="https://ai.google.dev/gemini-api/docs/billing" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-[10px] font-black text-emerald-600 hover:underline uppercase flex items-center gap-1"
-                    >
-                        Info Fatturazione <ExternalLink className="w-2 h-2" />
-                    </a>
+                    <div className="pt-3 border-t border-slate-50">
+                      <a 
+                        href="https://ai.google.dev/gemini-api/docs/billing" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-black text-emerald-600 hover:text-emerald-500 uppercase flex items-center justify-between group/link"
+                      >
+                          Documentazione Fatturazione 
+                          <ExternalLink className="w-3 h-3 group-hover/link:translate-x-0.5 transition-transform" />
+                      </a>
+                    </div>
                 </div>
             </div>
 
@@ -117,10 +127,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
     </div>
   );
 };
-
-const ExternalLink = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-);
 
 const NavButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
   <button
