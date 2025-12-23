@@ -7,7 +7,7 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, Key, Info, ExternalLink
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, Key, Info, ExternalLink, ClipboardList, ChevronRight, Clock
 } from 'lucide-react';
 
 declare global {
@@ -63,7 +63,7 @@ const SearchAndFilterControls: React.FC<SearchAndFilterProps> = ({
           </button>
         )}
       </div>
-      {activeTab === Tab.LIVE && (
+      {(activeTab === Tab.LIVE || activeTab === Tab.RESULTS) && (
         <button 
           onClick={() => setLiveOnly(!liveOnly)}
           className={`px-5 rounded-2xl font-black text-[10px] uppercase tracking-wider flex items-center gap-2 transition-all border-2 ${
@@ -220,39 +220,27 @@ const App: React.FC = () => {
   };
 
   const leagues = useMemo(() => {
-    // Definizione di leghe base per garantire che l'utente veda sempre opzioni
     const baseLeagues = ['Serie A', 'Premier League', 'La Liga', 'Bundesliga', 'Ligue 1', 'Champions League'];
     if (!data) return baseLeagues;
-    
     const matchLeagues = data.matches.map(m => m.league);
     const standingLeagues = Object.keys(data.standings);
-    
-    // Combiniamo leghe base con quelle trovate dall'IA
     return Array.from(new Set([...baseLeagues, ...matchLeagues, ...standingLeagues])).sort();
   }, [data]);
 
-  const filteredStandings = useMemo(() => {
-    if (!data) return {};
-    const filtered: Record<string, Standing[]> = {};
-    (Object.entries(data.standings) as [string, Standing[]][]).forEach(([league, teams]) => {
-      const leagueMatchesFilter = selectedLeague === 'All' || league === selectedLeague;
-      const filteredTeams = teams.filter(t => t.team.toLowerCase().includes(searchTerm.toLowerCase()));
-      if (leagueMatchesFilter && filteredTeams.length > 0) {
-        filtered[league] = filteredTeams;
-      }
+  const matchesByStatus = useMemo(() => {
+    if (!data) return { live: [], upcoming: [], finished: [] };
+    const filtered = data.matches.filter(m => {
+       const searchOk = m.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) || m.awayTeam.toLowerCase().includes(searchTerm.toLowerCase());
+       const leagueOk = selectedLeague === 'All' || m.league === selectedLeague;
+       return searchOk && leagueOk;
     });
-    return filtered;
-  }, [data, searchTerm, selectedLeague]);
 
-  const filteredMatches = useMemo(() => {
-    if (!data) return [];
-    return data.matches.filter(m => {
-      const matchesSearch = m.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) || m.awayTeam.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesLeague = selectedLeague === 'All' || m.league === selectedLeague;
-      const isMatchLive = m.status.toLowerCase().includes('live') || m.status.toLowerCase().includes('in corso');
-      return matchesSearch && matchesLeague && (!liveOnly || isMatchLive);
-    });
-  }, [data, searchTerm, selectedLeague, liveOnly]);
+    return {
+      live: filtered.filter(m => m.status.toLowerCase().includes('live') || m.status.toLowerCase().includes('in corso')),
+      upcoming: filtered.filter(m => m.status.toLowerCase().includes(':') || m.status.toLowerCase().includes('prossima') || !m.score || m.score === '0-0' && m.status === 'Non iniziata'),
+      finished: filtered.filter(m => m.status.toLowerCase().includes('finale') || m.status.toLowerCase().includes('terminata') || m.status.toLowerCase().includes('ft'))
+    };
+  }, [data, searchTerm, selectedLeague]);
 
   const handlePredict = async (home: string, away: string) => {
     setPredictModalMatch({ home, away });
@@ -301,17 +289,10 @@ const App: React.FC = () => {
     if (!hasApiKey && activeTab !== Tab.SETTINGS) {
        return (
           <div className="py-20 flex flex-col items-center justify-center text-center px-6 bg-white/50 rounded-[3rem] border-2 border-dashed border-red-200 animate-in fade-in">
-             <div className="bg-red-50 p-6 rounded-full mb-6">
-                <AlertTriangle className="w-12 h-12 text-red-500" />
-             </div>
+             <div className="bg-red-50 p-6 rounded-full mb-6"><AlertTriangle className="w-12 h-12 text-red-500" /></div>
              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-4">API Key Mancante</h3>
-             <p className="text-sm text-slate-600 max-w-sm mb-8 font-medium">L'app richiede una chiave API Gemini per analizzare i match e generare statistiche. Configurala ora nel tab delle impostazioni.</p>
-             <button 
-               onClick={() => setActiveTab(Tab.SETTINGS)}
-               className="bg-emerald-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/10 hover:scale-105 active:scale-95 transition-all"
-             >
-                Vai alle Impostazioni
-             </button>
+             <p className="text-sm text-slate-600 max-w-sm mb-8 font-medium">Configurala nel tab Config per sbloccare l'IA.</p>
+             <button onClick={() => setActiveTab(Tab.SETTINGS)} className="bg-emerald-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:scale-105 transition-all">Vai alle Impostazioni</button>
           </div>
        );
     }
@@ -319,13 +300,8 @@ const App: React.FC = () => {
     if (loading && !data) {
       return (
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
-          <div className="relative mb-12">
-            <div className="w-28 h-28 border-[12px] border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-                <ShieldCheck className="w-12 h-12 text-emerald-600 animate-pulse" />
-            </div>
-          </div>
-          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter uppercase">Analisi In Corso...</h3>
+          <div className="w-28 h-28 border-[12px] border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
+          <h3 className="text-3xl font-black text-emerald-950 mt-6 uppercase">Aggiornamento Dati...</h3>
         </div>
       );
     }
@@ -333,31 +309,113 @@ const App: React.FC = () => {
     switch (activeTab) {
       case Tab.LIVE:
         return (
-          <div className="space-y-6 animate-in fade-in">
-            {!hasApiKey && (
-              <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-4 mb-4">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-                <p className="text-xs font-bold text-red-800 flex-1">Configurazione API richiesta per sbloccare le funzionalità IA.</p>
-                <button onClick={() => setActiveTab(Tab.SETTINGS)} className="text-[10px] font-black uppercase text-red-600 underline">Configura</button>
-              </div>
+          <div className="space-y-10 animate-in fade-in">
+            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={false} setLiveOnly={() => {}} activeTab={activeTab} leagues={leagues} />
+            
+            {/* MATCH LIVE */}
+            {matchesByStatus.live.length > 0 && (
+              <section className="space-y-4">
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div><h2 className="text-xl font-black text-emerald-950 uppercase">Match in Corso</h2></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {matchesByStatus.live.map(m => (
+                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} />
+                  ))}
+                </div>
+              </section>
             )}
-            <div className="flex items-center justify-between bg-white/50 p-4 rounded-3xl border border-emerald-100 mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div>
-                <h2 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Campo Live</h2>
-              </div>
-              <button onClick={() => loadData(false)} disabled={loading || isRefreshing} className="p-2 bg-emerald-600 text-white rounded-xl shadow-lg hover:rotate-180 transition-transform duration-500"><RefreshCw className={`w-4 h-4 ${loading || isRefreshing ? 'animate-spin' : ''}`} /></button>
-            </div>
-            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredMatches.length > 0 ? filteredMatches.map(m => (
-                <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} onToggleFavorite={toggleFavorite} showOdds={true} />
-              )) : (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-bold italic">Nessun match trovato per i criteri selezionati.</div>
-              )}
-            </div>
+
+            {/* PROSSIME PARTITE */}
+            <section className="space-y-4">
+                <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-emerald-600" /><h2 className="text-xl font-black text-emerald-950 uppercase">Prossime Partite</h2></div>
+                <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide">
+                  {matchesByStatus.upcoming.length > 0 ? matchesByStatus.upcoming.map(m => (
+                    <div key={m.id} className="min-w-[300px] flex-shrink-0">
+                      <MatchCard match={m} onPredict={handlePredict} onBet={setBettingMatch} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} showOdds={true} />
+                    </div>
+                  )) : <div className="text-slate-400 italic font-medium">Nessuna partita programmata a breve.</div>}
+                </div>
+            </section>
+
+            {/* ULTIMI 10 RISULTATI */}
+            <section className="space-y-4">
+                <div className="flex items-center gap-2"><Trophy className="w-5 h-5 text-emerald-600" /><h2 className="text-xl font-black text-emerald-950 uppercase">Ultimi Risultati</h2></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {matchesByStatus.finished.slice(0, 10).map(m => (
+                    <MatchCard key={m.id} match={m} onPredict={handlePredict} onToggleFavorite={toggleFavorite} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} />
+                  ))}
+                </div>
+            </section>
           </div>
         );
+
+      case Tab.RESULTS:
+        return (
+          <div className="space-y-6 animate-in fade-in">
+             <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
+             <div className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden">
+                <div className="bg-emerald-900 text-white p-6 font-black uppercase text-xs tracking-widest">Tabellone Risultati Pratico</div>
+                <div className="divide-y divide-slate-100">
+                   {(liveOnly ? matchesByStatus.live : [...matchesByStatus.live, ...matchesByStatus.finished]).map(m => (
+                     <div key={m.id} onClick={() => handlePredict(m.homeTeam, m.awayTeam)} className="p-4 md:p-6 hover:bg-emerald-50 cursor-pointer transition-colors flex items-center justify-between group">
+                        <div className="flex items-center gap-3 md:gap-8 flex-1">
+                           <span className="text-[9px] font-black text-slate-400 uppercase w-16 hidden md:block">{m.league}</span>
+                           <div className="flex-1 flex items-center justify-end gap-3 text-right">
+                              <span className="font-bold text-slate-800 text-sm">{m.homeTeam}</span>
+                              <img src={`https://avatar.vercel.sh/${m.homeTeam}?size=24`} className="w-5 h-5 rounded" />
+                           </div>
+                           <div className="px-3 py-1 bg-slate-900 text-white font-mono font-black text-lg rounded-lg min-w-[60px] text-center shadow-lg">
+                              {m.score}
+                           </div>
+                           <div className="flex-1 flex items-center gap-3 text-left">
+                              <img src={`https://avatar.vercel.sh/${m.awayTeam}?size=24`} className="w-5 h-5 rounded" />
+                              <span className="font-bold text-slate-800 text-sm">{m.awayTeam}</span>
+                           </div>
+                        </div>
+                        <div className="ml-4 flex items-center gap-4">
+                           <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${m.status.includes('FT') || m.status.includes('Finale') ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-600 animate-pulse'}`}>{m.status}</span>
+                           <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
+                        </div>
+                     </div>
+                   ))}
+                   {matchesByStatus.live.length === 0 && matchesByStatus.finished.length === 0 && (
+                      <div className="p-10 text-center text-slate-400 italic">Nessun risultato disponibile.</div>
+                   )}
+                </div>
+             </div>
+          </div>
+        );
+
+      case Tab.STANDINGS:
+        return (
+          <div className="space-y-6 animate-in fade-in">
+            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={false} setLiveOnly={() => {}} activeTab={activeTab} leagues={leagues} />
+            {data && (Object.entries(data.standings) as [string, Standing[]][]).filter(([league]) => selectedLeague === 'All' || league === selectedLeague).map(([league, teams]) => (
+                <div key={league} className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden mb-8">
+                  <div className="bg-emerald-900 text-white p-6 font-black text-xs uppercase tracking-widest flex justify-between items-center">
+                    <span>{league}</span><Trophy className="w-5 h-5 text-lime-400" />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm min-w-[500px]">
+                        <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px]">
+                        <tr><th className="p-6">Pos</th><th className="p-6">Squadra</th><th className="p-6 text-center">G</th><th className="p-6 text-center">Pts</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                        {teams.map(t => (
+                            <tr key={t.team} className="hover:bg-emerald-50/50 transition-colors">
+                            <td className="p-6 font-bold text-emerald-600">#{t.rank}</td>
+                            <td className="p-6 font-black text-slate-800">{t.team}</td>
+                            <td className="p-6 text-center font-bold text-slate-500">{t.played}</td>
+                            <td className="p-6 text-center font-mono font-bold text-emerald-700">{t.points}</td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+          </div>
+        );
+
       case Tab.SETTINGS:
         return (
           <div className="space-y-10 animate-in fade-in">
@@ -365,71 +423,27 @@ const App: React.FC = () => {
                 <div className="flex flex-col items-center text-center space-y-4">
                     <div className="bg-emerald-50 p-4 rounded-full"><Settings className="w-12 h-12 text-emerald-600" /></div>
                     <h3 className="text-2xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
-                    <p className="text-sm text-slate-500 max-w-sm font-medium">Gestisci la connessione all'IA e resetta le tue simulazioni.</p>
                 </div>
-
                 <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 space-y-6">
                     <div className="flex items-center justify-between">
                        <div className="flex items-center gap-3">
                           <Key className={`w-5 h-5 ${hasApiKey ? 'text-emerald-600' : 'text-red-500'}`} />
-                          <h4 className="font-black text-xs uppercase text-slate-800 tracking-wider">Connessione Gemini API</h4>
+                          <h4 className="font-black text-xs uppercase text-slate-800 tracking-wider">Gemini API Key</h4>
                        </div>
                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${hasApiKey ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                          {hasApiKey ? 'Connesso' : 'Disconnesso'}
+                          {hasApiKey ? 'Attiva' : 'Mancante'}
                        </div>
                     </div>
-                    
-                    <p className="text-xs text-slate-600 font-medium">
-                       L'app utilizza Gemini 3 Flash per l'analisi dei dati in tempo reale. È necessario selezionare un progetto con fatturazione abilitata.
-                    </p>
-
-                    <button 
-                      onClick={handleOpenApiKeyDialog}
-                      className="w-full bg-emerald-800 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-                    >
-                       <Key className="w-4 h-4" />
-                       Seleziona / Cambia API Key
-                    </button>
-                    
-                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="flex items-center justify-center gap-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline">
-                       <Info className="w-3 h-3" /> Guida Fatturazione Google Cloud
-                    </a>
+                    <button onClick={handleOpenApiKeyDialog} className="w-full bg-emerald-800 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-3"><Key className="w-4 h-4" /> Configura API Key</button>
+                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="flex items-center justify-center gap-2 text-[10px] font-black text-emerald-600 uppercase hover:underline"><Info className="w-3 h-3" /> Info Fatturazione Google</a>
                 </div>
-
                 <div className="pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-center gap-4">
-                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="px-6 py-3 border border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-red-50 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset Totale Dati</button>
-                   <button onClick={() => { localStorage.removeItem('kickoff_balance'); window.location.reload(); }} className="px-6 py-3 border border-slate-200 text-slate-600 font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-slate-50 rounded-xl transition-colors"><BarChart3 className="w-3 h-3" /> Reset Saldo (1000€)</button>
+                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="px-6 py-3 border border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-red-50 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset App</button>
                 </div>
              </div>
           </div>
         );
-      case Tab.STANDINGS:
-        return (
-          <div className="space-y-6 animate-in fade-in">
-            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
-            {data && (Object.entries(filteredStandings) as [string, Standing[]][]).map(([league, teams]) => (
-                <div key={league} className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden mb-8">
-                  <div className="bg-emerald-900 text-white p-6 font-black text-xs uppercase tracking-widest flex justify-between items-center">
-                    <span>{league}</span><Trophy className="w-5 h-5 text-lime-400" />
-                  </div>
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[10px]">
-                      <tr><th className="p-6">Pos</th><th className="p-6">Squadra</th><th className="p-6 text-center">Pts</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {teams.map(t => (
-                        <tr key={t.team} className="hover:bg-emerald-50/50 transition-colors">
-                          <td className="p-6 font-bold text-emerald-600">#{t.rank}</td>
-                          <td className="p-6 font-black text-slate-800">{t.team}</td>
-                          <td className="p-6 text-center font-mono font-bold">{t.points}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-          </div>
-        );
+
       case Tab.AI_CHAT:
         return (
           <div className="space-y-8 animate-in fade-in pb-12">
@@ -440,7 +454,7 @@ const App: React.FC = () => {
                       <h3 className="text-4xl font-black flex items-center gap-4 uppercase tracking-tighter">
                          <Sparkles className="w-10 h-10 text-lime-400 animate-pulse" /> AI Performance Hub
                       </h3>
-                      <p className="text-emerald-200 text-sm font-medium">Analisi strategica e proiezioni sulle tue squadre del cuore.</p>
+                      <p className="text-emerald-200 text-sm font-medium">Analisi strategica basata sui dati storici e le tue squadre.</p>
                    </div>
                    <button 
                      onClick={handleAnalyzeFavorites} 
@@ -452,7 +466,7 @@ const App: React.FC = () => {
                      }`}
                    >
                       {isAnalyzingHistory ? <RefreshCw className="w-5 h-5 animate-spin" /> : <BarChart3 className="w-5 h-5" />}
-                      {isAnalyzingHistory ? "Analisi in Corso..." : "Avvia Analisi Storica"}
+                      {isAnalyzingHistory ? "Analisi..." : "Avvia Analisi Strategica"}
                    </button>
                 </div>
                 {favorites.length > 0 && (
@@ -466,7 +480,7 @@ const App: React.FC = () => {
              {historicalAnalysis && (
                 <div className="bg-white p-10 rounded-[3rem] border border-emerald-50 shadow-xl animate-in slide-in-from-bottom-4">
                    <div className="flex items-center justify-between mb-8">
-                      <h4 className="text-xl font-black text-emerald-950 uppercase tracking-tight">Report Strategico IA</h4>
+                      <h4 className="text-xl font-black text-emerald-950 uppercase tracking-tight">Report IA</h4>
                       <button onClick={() => setHistoricalAnalysis(null)} className="text-slate-400 hover:text-red-500"><X className="w-5 h-5" /></button>
                    </div>
                    <div className="prose prose-emerald max-w-none whitespace-pre-wrap text-sm text-slate-700 font-medium leading-relaxed">
@@ -476,6 +490,7 @@ const App: React.FC = () => {
              )}
           </div>
         );
+
       case Tab.FAVORITES:
         return (
           <div className="space-y-10 animate-in fade-in">
@@ -485,18 +500,18 @@ const App: React.FC = () => {
              </div>
              {favorites.length > 0 ? (
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {favorites.map(team => {
-                    return <div key={team} className="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center justify-between">
+                  {favorites.map(team => (
+                    <div key={team} className="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center justify-between">
                        <div className="flex items-center gap-4">
                           <img src={`https://avatar.vercel.sh/${team}?size=32`} className="w-8 h-8 rounded-lg" alt="" />
                           <span className="font-black text-slate-800 uppercase text-xs">{team}</span>
                        </div>
                        <button onClick={() => toggleFavorite(team)} className="text-red-500"><X className="w-4 h-4" /></button>
-                    </div>;
-                  })}
+                    </div>
+                  ))}
                </div>
              ) : (
-               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Non hai ancora squadre preferite.</div>
+               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Nessuna squadra preferita.</div>
              )}
           </div>
         );
@@ -517,22 +532,20 @@ const App: React.FC = () => {
 
       <div className="mb-8 flex flex-col md:flex-row justify-between items-center bg-emerald-950 p-6 rounded-[2.5rem] border border-emerald-800 shadow-2xl relative overflow-hidden gap-4">
           <div className="flex items-center gap-4 relative z-10">
-             <div className={`p-4 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12 shadow-[0_0_20px_rgba(163,230,53,0.5)]' : 'bg-emerald-900 text-emerald-500'}`}><BrainCircuit className="w-8 h-8" /></div>
-             <div><p className="text-white text-[11px] font-black uppercase tracking-[0.2em]">KickOff AI Engine</p></div>
+             <div className={`p-4 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12 shadow-[0_0_20px_rgba(163,230,53,0.5)]' : 'bg-emerald-900 text-emerald-50'}`}><BrainCircuit className="w-8 h-8" /></div>
+             <div><p className="text-white text-[11px] font-black uppercase tracking-[0.2em]">IA Analysis Mode</p></div>
           </div>
-          <div className="flex gap-4 relative z-10 w-full md:w-auto">
-            <button onClick={() => setThinkingMode(!thinkingMode)} className={`flex-1 md:flex-none px-8 py-4 rounded-2xl text-[11px] font-black transition-all border-2 uppercase tracking-widest ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950 shadow-lg shadow-lime-500/20' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}>{thinkingMode ? 'Analysis On' : 'Standard'}</button>
-          </div>
+          <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-8 py-4 rounded-2xl text-[11px] font-black transition-all border-2 uppercase tracking-widest ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950 shadow-lg' : 'bg-transparent border-emerald-800 text-emerald-500'}`}>{thinkingMode ? 'Thinking On' : 'Standard'}</button>
       </div>
 
       {renderContent()}
       
       {data?.sources && data.sources.length > 0 && activeTab !== Tab.SETTINGS && (
-        <div className="mt-12 p-8 bg-white rounded-[3rem] border-2 border-emerald-50 shadow-sm">
+        <div className="mt-12 p-8 bg-white rounded-[3rem] border-2 border-emerald-50">
           <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Search className="w-4 h-4 text-emerald-500" /> Fonti Analizzate</h4>
           <div className="flex flex-wrap gap-4 overflow-x-auto pb-2 scrollbar-hide">
             {data.sources.map((source, idx) => (
-              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 flex items-center gap-3 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-[1.25rem] text-[11px] font-black uppercase hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm">{source.title || 'Dettaglio'} <ExternalLink className="w-4 h-4" /></a>
+              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 flex items-center gap-3 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-[1.25rem] text-[11px] font-black uppercase hover:bg-emerald-100 transition-all border border-emerald-100">{source.title || 'Dettaglio'} <ExternalLink className="w-4 h-4" /></a>
             ))}
           </div>
         </div>
@@ -554,7 +567,7 @@ const App: React.FC = () => {
                   <div className="space-y-10 animate-in zoom-in">
                     <div className="bg-emerald-50 p-12 rounded-[3rem] border-2 border-emerald-100 shadow-inner">
                         <p className="text-6xl font-black text-emerald-950 tracking-tighter">{prediction?.prediction}</p>
-                        <div className="inline-block px-6 py-2 bg-lime-400 text-emerald-950 rounded-full text-[11px] font-black uppercase mt-6 shadow-lg shadow-lime-500/20">Confidenza: {prediction?.confidence}</div>
+                        <div className="inline-block px-6 py-2 bg-lime-400 text-emerald-950 rounded-full text-[11px] font-black uppercase mt-6 shadow-lg">Confidenza: {prediction?.confidence}</div>
                     </div>
                     <p className="text-sm text-slate-700 font-bold italic leading-relaxed">"{prediction?.analysis}"</p>
                   </div>

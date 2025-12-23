@@ -50,10 +50,10 @@ export interface HistoricalSnapshot {
 
 export enum Tab {
   LIVE = 'live',
+  RESULTS = 'results',
   STANDINGS = 'standings',
   FAVORITES = 'favorites',
   AI_CHAT = 'ai_chat',
-  HISTORY = 'history',
   SETTINGS = 'settings'
 }
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Tab } from '../types';
-import { Trophy, Star, Radio, TrendingUp, BrainCircuit, Wallet, Settings } from 'lucide-react';
+import { Trophy, Star, Radio, TrendingUp, BrainCircuit, Wallet, Settings, ClipboardList } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,7 +26,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, bala
     <div className="min-h-screen flex flex-col max-w-5xl mx-auto bg-white shadow-2xl border-x border-green-100 overflow-x-hidden">
       <header className="bg-emerald-800 text-white p-4 md:p-6 sticky top-0 z-50 shadow-md">
         <div className="flex justify-between items-center">
-          {/* Left Section: Logo & Balance */}
           <div className="flex items-center gap-4 md:gap-6">
             <div className="flex items-center gap-3">
               <div className="bg-lime-400 p-2 rounded-lg shadow-lg"><Trophy className="w-6 h-6 md:w-8 md:h-8 text-emerald-900" /></div>
@@ -37,7 +36,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, bala
               </div>
             </div>
 
-            {/* Wallet Widget */}
             {balance !== undefined && (
               <div className={`bg-emerald-700/50 px-3 md:px-4 py-1.5 md:py-2 rounded-2xl border border-emerald-600 flex items-center gap-2 md:gap-3 shadow-inner transition-all ${isPulsing ? 'animate-balance-ping border-lime-400 bg-emerald-600' : ''}`}>
                 <div className={`p-1 rounded-lg transition-colors ${isPulsing ? 'bg-white' : 'bg-lime-400'}`}><Wallet className={`w-3 h-3 md:w-3.5 md:h-3.5 transition-colors ${isPulsing ? 'text-emerald-600' : 'text-emerald-900'}`} /></div>
@@ -48,8 +46,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, bala
               </div>
             )}
           </div>
-          
-          {/* Right Section: Mobile Logo or Info */}
           <div className="hidden sm:flex items-center gap-2">
              <div className="text-[10px] font-black uppercase text-emerald-300 tracking-widest border border-emerald-700 px-2 py-1 rounded">V2.5 Pro</div>
           </div>
@@ -57,8 +53,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, bala
       </header>
 
       <nav className="bg-white border-b sticky top-[68px] md:top-[92px] z-40 overflow-x-auto scrollbar-hide shadow-sm">
-        <div className="flex justify-around min-w-[500px] md:min-w-[700px]">
-          <NavButton active={activeTab === Tab.LIVE} onClick={() => setActiveTab(Tab.LIVE)} icon={<Radio className="w-4 h-4" />} label="Live" />
+        <div className="flex justify-around min-w-[600px] md:min-w-[800px]">
+          <NavButton active={activeTab === Tab.LIVE} onClick={() => setActiveTab(Tab.LIVE)} icon={<Radio className="w-4 h-4" />} label="Home" />
+          <NavButton active={activeTab === Tab.RESULTS} onClick={() => setActiveTab(Tab.RESULTS)} icon={<ClipboardList className="w-4 h-4" />} label="Risultati" />
           <NavButton active={activeTab === Tab.STANDINGS} onClick={() => setActiveTab(Tab.STANDINGS)} icon={<TrendingUp className="w-4 h-4" />} label="Classifiche" />
           <NavButton active={activeTab === Tab.FAVORITES} onClick={() => setActiveTab(Tab.FAVORITES)} icon={<Star className="w-4 h-4" />} label="Squadre" />
           <NavButton active={activeTab === Tab.AI_CHAT} onClick={() => setActiveTab(Tab.AI_CHAT)} icon={<BrainCircuit className="w-4 h-4" />} label="IA Stats" />
