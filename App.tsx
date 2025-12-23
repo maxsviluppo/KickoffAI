@@ -7,7 +7,7 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, CheckCircle2
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, Key, Info, ExternalLink
 } from 'lucide-react';
 
 declare global {
@@ -96,68 +96,13 @@ const SearchAndFilterControls: React.FC<SearchAndFilterProps> = ({
   </div>
 );
 
-const TeamPerformanceCard: React.FC<{ team: string, standing?: Standing }> = ({ team, standing }) => {
-  const form = standing?.formSequence || ['W', 'D', 'L', 'W', 'W']; 
-  const chartData = useMemo(() => {
-    const pointsMap = { 'W': 3, 'D': 1, 'L': 0 };
-    return form.map(res => pointsMap[res] || 0);
-  }, [form]);
-
-  const width = 120;
-  const height = 40;
-  const padding = 5;
-  const points = useMemo(() => {
-    const step = (width - padding * 2) / (chartData.length - 1);
-    return chartData.map((val, i) => {
-      const x = padding + i * step;
-      const y = height - padding - (val / 3) * (height - padding * 2);
-      return `${x},${y}`;
-    }).join(' ');
-  }, [chartData]);
-
-  return (
-    <div className="bg-white rounded-[2rem] p-6 border border-emerald-50 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-12 h-12 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center">
-          <img src={`https://avatar.vercel.sh/${team}?size=40`} alt={team} className="w-8 h-8 rounded-md" />
-        </div>
-        <div className="flex-1">
-          <h4 className="font-black text-slate-800 uppercase text-xs tracking-tight">{team}</h4>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] font-bold text-emerald-600">Pos. #{standing?.rank || '-'}</span>
-            <span className="text-[10px] font-bold text-slate-400">• {standing?.points || '-'} Pts</span>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Analisi Trend IA</p>
-        <div className="relative h-14 w-full flex items-center justify-center bg-emerald-50/30 rounded-xl border border-emerald-50/50">
-           <svg width="100%" height="40" viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-              <polyline fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
-              {chartData.map((val, i) => {
-                const step = (width - padding * 2) / (chartData.length - 1);
-                const x = padding + i * step;
-                const y = height - padding - (val / 3) * (height - padding * 2);
-                return <circle key={i} cx={x} cy={y} r="3" className={`${val === 3 ? 'fill-emerald-600' : val === 1 ? 'fill-slate-400' : 'fill-red-500'}`} />;
-              })}
-           </svg>
-        </div>
-        <div className="flex justify-between mt-1 px-1">
-          {form.map((res, i) => (
-            <span key={i} className={`text-[8px] font-black ${res === 'W' ? 'text-emerald-600' : res === 'D' ? 'text-slate-400' : 'text-red-500'}`}>{res}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.LIVE);
   const [data, setData] = useState<SportsData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const isFetchingRef = useRef(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
@@ -193,6 +138,15 @@ const App: React.FC = () => {
   const [bettingMatch, setBettingMatch] = useState<Match | null>(null);
   const [streamingMatch, setStreamingMatch] = useState<Match | null>(null);
 
+  const checkApiKey = useCallback(async () => {
+    if (window.aistudio) {
+      const ok = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(ok);
+      return ok;
+    }
+    return true;
+  }, []);
+
   const addNotification = useCallback((title: string, message: string, type: AppNotification['type']) => {
     const newNotif: AppNotification = {
       id: Math.random().toString(36).substring(7),
@@ -221,6 +175,12 @@ const App: React.FC = () => {
   }, []);
 
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
+    const ok = await checkApiKey();
+    if (!ok) {
+       setLoading(false);
+       return;
+    }
+
     if (isFetchingRef.current && !isInitial) return;
     
     isFetchingRef.current = true;
@@ -237,19 +197,19 @@ const App: React.FC = () => {
       console.error("Critical Load Error:", err);
       const errorStr = JSON.stringify(err);
       if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED")) {
-        addNotification("Limite Quota", "Quota API Gemini esaurita. Controlla il tasto Key in alto.", "info");
+        addNotification("Limite Quota", "Quota API Gemini esaurita.", "info");
       }
     } finally {
       setLoading(false);
       setIsRefreshing(false);
       isFetchingRef.current = false;
     }
-  }, [thinkingMode, saveToHistory, location, addNotification]);
+  }, [thinkingMode, saveToHistory, location, addNotification, checkApiKey]);
 
-  // Caricamento iniziale e aggiornamenti reattivi (stabilizzato)
   useEffect(() => {
+    checkApiKey();
     loadData(true);
-  }, [thinkingMode, location, loadData]);
+  }, [thinkingMode, location, loadData, checkApiKey]);
 
   const toggleFavorite = (team: string) => {
     setFavorites(prev => {
@@ -296,38 +256,64 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Dati non disponibili o errore API." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore API." });
     } finally {
       setPredicting(false);
     }
   };
 
-  const handlePlaceBet = (bet: Bet) => {
+  // Fixed: handleOpenApiKeyDialog handles assumed success and no delay as per guidelines
+  const handleOpenApiKeyDialog = async () => {
+    if (window.aistudio) {
+       await window.aistudio.openSelectKey();
+       setHasApiKey(true);
+       loadData(true);
+    }
+  };
+
+  // Fixed: Added missing handlePlaceBet function
+  const handlePlaceBet = useCallback((bet: Bet) => {
     setBalance(prev => {
       const newBalance = prev - bet.amount;
       localStorage.setItem('kickoff_balance', newBalance.toString());
       return newBalance;
     });
-    addNotification("Scommessa", `€${bet.amount} su ${bet.matchName}`, 'info');
-  };
+    addNotification("Scommessa Simulata", `Piazzata giocata di €${bet.amount} su ${bet.matchName}`, "info");
+  }, [addNotification]);
 
-  const handleAnalyzeFavorites = async () => {
-    if (history.length === 0) {
-      addNotification("Dati Mancanti", "Nessuno snapshot storico disponibile.", "info");
-      return;
-    }
+  // Fixed: Added missing handleAnalyzeFavorites function
+  const handleAnalyzeFavorites = useCallback(async () => {
+    if (favorites.length === 0) return;
     setIsAnalyzingHistory(true);
     try {
-      const report = await getHistoricalAnalysis(history, favorites, thinkingMode);
-      setHistoricalAnalysis(report);
+      const result = await getHistoricalAnalysis(history, favorites, thinkingMode);
+      setHistoricalAnalysis(result);
     } catch (err) {
-      addNotification("Errore IA", "Impossibile generare l'analisi.", "info");
+      addNotification("Errore Analisi", "Impossibile generare il report strategico.", "info");
     } finally {
       setIsAnalyzingHistory(false);
     }
-  };
+  }, [favorites, history, thinkingMode, addNotification]);
 
   const renderContent = () => {
+    if (!hasApiKey && activeTab !== Tab.SETTINGS) {
+       return (
+          <div className="py-20 flex flex-col items-center justify-center text-center px-6 bg-white/50 rounded-[3rem] border-2 border-dashed border-red-200 animate-in fade-in">
+             <div className="bg-red-50 p-6 rounded-full mb-6">
+                <AlertTriangle className="w-12 h-12 text-red-500" />
+             </div>
+             <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-4">API Key Mancante</h3>
+             <p className="text-sm text-slate-600 max-w-sm mb-8 font-medium">L'app richiede una chiave API Gemini per analizzare i match e generare statistiche. Configurala ora nel tab delle impostazioni.</p>
+             <button 
+               onClick={() => setActiveTab(Tab.SETTINGS)}
+               className="bg-emerald-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-900/10 hover:scale-105 active:scale-95 transition-all"
+             >
+                Vai alle Impostazioni
+             </button>
+          </div>
+       );
+    }
+
     if (loading && !data) {
       return (
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
@@ -342,19 +328,17 @@ const App: React.FC = () => {
       );
     }
 
-    if (!data && !loading) {
-       return (
-        <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic flex flex-col items-center gap-4">
-           <AlertTriangle className="w-12 h-12 text-emerald-300" />
-           <p className="max-w-xs leading-relaxed">Dati temporaneamente non disponibili.<br/>Assicurati di aver configurato la API Key cliccando sull'icona della chiave nell'intestazione.</p>
-        </div>
-       )
-    }
-
     switch (activeTab) {
       case Tab.LIVE:
         return (
           <div className="space-y-6 animate-in fade-in">
+            {!hasApiKey && (
+              <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-4 mb-4">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+                <p className="text-xs font-bold text-red-800 flex-1">Configurazione API richiesta per sbloccare le funzionalità IA.</p>
+                <button onClick={() => setActiveTab(Tab.SETTINGS)} className="text-[10px] font-black uppercase text-red-600 underline">Configura</button>
+              </div>
+            )}
             <div className="flex items-center justify-between bg-white/50 p-4 rounded-3xl border border-emerald-100 mb-2">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div>
@@ -364,10 +348,57 @@ const App: React.FC = () => {
             </div>
             <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredMatches.map(m => (
+              {filteredMatches.length > 0 ? filteredMatches.map(m => (
                 <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} onToggleFavorite={toggleFavorite} showOdds={true} />
-              ))}
+              )) : (
+                 <div className="col-span-full py-12 text-center text-slate-400 font-bold italic">Nessun match trovato per i criteri selezionati.</div>
+              )}
             </div>
+          </div>
+        );
+      case Tab.SETTINGS:
+        return (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 p-12 space-y-10">
+                <div className="flex flex-col items-center text-center space-y-4">
+                    <div className="bg-emerald-50 p-4 rounded-full"><Settings className="w-12 h-12 text-emerald-600" /></div>
+                    <h3 className="text-2xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
+                    <p className="text-sm text-slate-500 max-w-sm font-medium">Gestisci la connessione all'IA e resetta le tue simulazioni.</p>
+                </div>
+
+                <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 space-y-6">
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                          <Key className={`w-5 h-5 ${hasApiKey ? 'text-emerald-600' : 'text-red-500'}`} />
+                          <h4 className="font-black text-xs uppercase text-slate-800 tracking-wider">Connessione Gemini API</h4>
+                       </div>
+                       <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${hasApiKey ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                          {hasApiKey ? 'Connesso' : 'Disconnesso'}
+                       </div>
+                    </div>
+                    
+                    <p className="text-xs text-slate-600 font-medium">
+                       L'app utilizza Gemini 3 Flash per l'analisi dei dati in tempo reale. È necessario selezionare un progetto con fatturazione abilitata.
+                    </p>
+
+                    <button 
+                      onClick={handleOpenApiKeyDialog}
+                      className="w-full bg-emerald-800 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                    >
+                       <Key className="w-4 h-4" />
+                       Seleziona / Cambia API Key
+                    </button>
+                    
+                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="flex items-center justify-center gap-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:underline">
+                       <Info className="w-3 h-3" /> Guida Fatturazione Google Cloud
+                    </a>
+                </div>
+
+                <div className="pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-center gap-4">
+                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="px-6 py-3 border border-red-100 text-red-500 font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-red-50 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset Totale Dati</button>
+                   <button onClick={() => { localStorage.removeItem('kickoff_balance'); window.location.reload(); }} className="px-6 py-3 border border-slate-200 text-slate-600 font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-slate-50 rounded-xl transition-colors"><BarChart3 className="w-3 h-3" /> Reset Saldo (1000€)</button>
+                </div>
+             </div>
           </div>
         );
       case Tab.STANDINGS:
@@ -422,98 +453,27 @@ const App: React.FC = () => {
                       {isAnalyzingHistory ? "Analisi in Corso..." : "Avvia Analisi Storica"}
                    </button>
                 </div>
-
-                <div className="mt-10 pt-10 border-t border-white/5 flex flex-wrap gap-4">
-                   <div className="flex flex-col gap-2">
-                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Incluso nel Report:</span>
-                      <div className="flex flex-wrap gap-2">
-                         {favorites.length > 0 ? favorites.map(f => (
-                            <div key={f} className="bg-white/10 px-4 py-2 rounded-xl flex items-center gap-2 border border-white/5">
-                               <img src={`https://avatar.vercel.sh/${f}?size=16`} className="w-4 h-4 rounded" alt="" />
-                               <span className="text-[10px] font-black uppercase text-white">{f}</span>
-                            </div>
-                         )) : (
-                            <p className="text-xs text-emerald-500 italic">Nessuna squadra preferita selezionata.</p>
-                         )}
-                      </div>
+                {/* Fixed: Render favorite teams in AI_CHAT tab */}
+                {favorites.length > 0 && (
+                   <div className="flex flex-wrap gap-2 mt-6 relative z-10">
+                      {favorites.map(f => (
+                         <span key={f} className="px-3 py-1 bg-emerald-800/50 border border-emerald-700 rounded-lg text-[10px] font-black uppercase text-lime-400">{f}</span>
+                      ))}
+                   </div>
+                )}
+             </div>
+             {/* Fixed: Render historical analysis results */}
+             {historicalAnalysis && (
+                <div className="bg-white p-10 rounded-[3rem] border border-emerald-50 shadow-xl animate-in slide-in-from-bottom-4">
+                   <div className="flex items-center justify-between mb-8">
+                      <h4 className="text-xl font-black text-emerald-950 uppercase tracking-tight">Report Strategico IA</h4>
+                      <button onClick={() => setHistoricalAnalysis(null)} className="text-slate-400 hover:text-red-500"><X className="w-5 h-5" /></button>
+                   </div>
+                   <div className="prose prose-emerald max-w-none whitespace-pre-wrap text-sm text-slate-700 font-medium leading-relaxed">
+                      {historicalAnalysis}
                    </div>
                 </div>
-             </div>
-
-             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-8">
-                   <div className="bg-white rounded-[3rem] p-10 shadow-xl border border-emerald-50 min-h-[400px] relative">
-                      {!historicalAnalysis && !isAnalyzingHistory && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-10">
-                            <FileSearch className="w-16 h-16 text-slate-200 mb-6" />
-                            <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">Pronto per l'Analisi</h4>
-                            <p className="text-sm text-slate-500 max-w-sm font-medium">L'IA utilizzerà i tuoi snapshot salvati per rilevare schemi di gioco e prevedere i prossimi esiti.</p>
-                         </div>
-                      )}
-
-                      {isAnalyzingHistory && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-white/80 backdrop-blur-sm z-20 rounded-[3rem]">
-                            <div className="relative mb-8">
-                               <div className="w-20 h-20 border-[8px] border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
-                               <BrainCircuit className="absolute inset-0 m-auto w-8 h-8 text-emerald-600 animate-pulse" />
-                            </div>
-                            <h4 className="text-xl font-black text-emerald-950 uppercase tracking-tighter">Gemini sta elaborando...</h4>
-                         </div>
-                      )}
-
-                      {historicalAnalysis && (
-                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-50">
-                               <div className="bg-emerald-600 p-2.5 rounded-xl text-white"><LineChart className="w-6 h-6" /></div>
-                               <h4 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Report Strategico IA</h4>
-                            </div>
-                            <div className="prose prose-slate max-w-none text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">
-                               {historicalAnalysis.split('\n').map((line, i) => {
-                                  if (line.match(/^\d\./) || line.includes(':')) {
-                                    return <p key={i} className="font-black text-emerald-900 mt-6 uppercase tracking-tight text-sm flex items-center gap-2">
-                                      <span className="w-1.5 h-1.5 bg-lime-500 rounded-full"></span> {line}
-                                    </p>
-                                  }
-                                  return <p key={i} className="mb-4">{line}</p>
-                               })}
-                            </div>
-                         </div>
-                      )}
-                   </div>
-                </div>
-
-                <div className="lg:col-span-4 space-y-6">
-                   <div className="bg-white rounded-[2.5rem] p-8 shadow-md border border-emerald-50">
-                      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                         <History className="w-4 h-4 text-emerald-500" /> Database Storico
-                      </h5>
-                      <div className="space-y-4">
-                         <div className="flex justify-between items-center text-xs">
-                            <span className="font-bold text-slate-500">Snapshot Salvati:</span>
-                            <span className="font-black text-emerald-600">{history.length} / 20</span>
-                         </div>
-                         <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${(history.length / 20) * 100}%` }}></div>
-                         </div>
-                      </div>
-                   </div>
-                </div>
-             </div>
-          </div>
-        );
-      case Tab.SETTINGS:
-        return (
-          <div className="space-y-10 animate-in fade-in">
-             <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 p-12 space-y-8">
-                <div className="flex flex-col items-center text-center space-y-4">
-                    <Settings className="w-12 h-12 text-emerald-600" />
-                    <h3 className="text-xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
-                    <p className="text-sm text-slate-600 max-w-sm font-medium">La gestione della API Key è ora centralizzata nel pulsante in alto a destra per un'esperienza più pulita.</p>
-                </div>
-                <div className="flex justify-center pt-8 border-t border-slate-100">
-                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-red-500 font-black text-[10px] uppercase flex items-center gap-2 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset Cache</button>
-                </div>
-             </div>
+             )}
           </div>
         );
       case Tab.FAVORITES:
@@ -528,7 +488,13 @@ const App: React.FC = () => {
                   {favorites.map(team => {
                     let teamStanding: Standing | undefined;
                     if (data) (Object.values(data.standings) as Standing[][]).forEach((leagueTeams: Standing[]) => { const found = leagueTeams.find(t => t.team === team); if (found) teamStanding = found; });
-                    return <TeamPerformanceCard key={team} team={team} standing={teamStanding} />;
+                    return <div key={team} className="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center justify-between">
+                       <div className="flex items-center gap-4">
+                          <img src={`https://avatar.vercel.sh/${team}?size=32`} className="w-8 h-8 rounded-lg" alt="" />
+                          <span className="font-black text-slate-800 uppercase text-xs">{team}</span>
+                       </div>
+                       <button onClick={() => toggleFavorite(team)} className="text-red-500"><X className="w-4 h-4" /></button>
+                    </div>;
                   })}
                </div>
              ) : (
@@ -563,7 +529,7 @@ const App: React.FC = () => {
 
       {renderContent()}
       
-      {data?.sources && data.sources.length > 0 && (
+      {data?.sources && data.sources.length > 0 && activeTab !== Tab.SETTINGS && (
         <div className="mt-12 p-8 bg-white rounded-[3rem] border-2 border-emerald-50 shadow-sm">
           <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Search className="w-4 h-4 text-emerald-500" /> Fonti Analizzate</h4>
           <div className="flex flex-wrap gap-4 overflow-x-auto pb-2 scrollbar-hide">
