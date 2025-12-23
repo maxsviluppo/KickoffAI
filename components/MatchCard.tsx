@@ -50,7 +50,6 @@ const MatchCard: React.FC<MatchCardProps> = ({
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        // Fallback simulato
         setShowShareFeedback(true);
         setTimeout(() => setShowShareFeedback(false), 2000);
       }
@@ -63,10 +62,9 @@ const MatchCard: React.FC<MatchCardProps> = ({
     const eventTitle = `${match.homeTeam} vs ${match.awayTeam} - ${match.league}`;
     const description = `Partita seguita su KickOff AI. Status: ${match.status}. Risultato: ${match.score}`;
     
-    // Generazione semplificata di un file .ics
     const now = new Date();
-    const startTime = new Date(now.getTime() + 60 * 60 * 1000); // Default: tra un'ora
-    const endTime = new Date(startTime.getTime() + 105 * 60 * 1000); // Default: durata 1h 45m
+    const startTime = new Date(now.getTime() + 60 * 60 * 1000);
+    const endTime = new Date(startTime.getTime() + 105 * 60 * 1000);
 
     const formatDate = (date: Date) => date.toISOString().replace(/-|:|\.\d+/g, '');
 
@@ -98,7 +96,6 @@ const MatchCard: React.FC<MatchCardProps> = ({
         ? 'ring-2 ring-amber-400 border-amber-100 bg-amber-50/20 shadow-amber-100' 
         : 'border-green-100'
     }`}>
-      {/* Background decoration */}
       <div className={`absolute top-0 right-0 w-24 h-24 rounded-bl-full -mr-12 -mt-12 transition-colors ${
         isFavoriteMatch ? 'bg-amber-100/50' : 'bg-green-50 group-hover:bg-green-100'
       }`}></div>
@@ -181,7 +178,7 @@ const MatchCard: React.FC<MatchCardProps> = ({
                 isPredictingLocal ? 'bg-emerald-900 scale-[0.98]' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
               }`}
             >
-              <BrainCircuit className={`w-3.5 h-3.5 transition-all ${isPredictingLocal ? 'animate-brain-pulse text-lime-400' : ''}`} />
+              <BrainCircuit className={`w-3.5 h-3.5 transition-all ${isPredictingLocal ? 'animate-pulse-ia text-lime-400' : ''}`} />
               Predizione IA
             </button>
           )}
