@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout from './components/Layout';
 import MatchCard from './components/MatchCard';
 import BettingModal from './components/BettingModal';
@@ -7,7 +7,7 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Lock, BarChart3, LineChart, FileSearch, History, Settings, CheckCircle2
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, BarChart3, LineChart, FileSearch, History, Settings, CheckCircle2
 } from 'lucide-react';
 
 declare global {
@@ -157,7 +157,8 @@ const App: React.FC = () => {
   const [data, setData] = useState<SportsData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const isFetchingRef = useRef(false);
+
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
   
@@ -220,11 +221,11 @@ const App: React.FC = () => {
   }, []);
 
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
-    if ((loading || isRefreshing) && !isInitial) return;
-
+    if (isFetchingRef.current && !isInitial) return;
+    
+    isFetchingRef.current = true;
     if (isSilent) setIsRefreshing(true);
     else setLoading(true);
-    setError(null);
 
     try {
       const result = await fetchSoccerData(thinkingMode, !forceNoSearch, location);
@@ -232,22 +233,20 @@ const App: React.FC = () => {
       
       setData(result);
       saveToHistory(result);
-      setError(null);
     } catch (err: any) {
       console.error("Critical Load Error:", err);
       const errorStr = JSON.stringify(err);
-      const is429 = errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED");
-      
-      if (is429) {
+      if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED")) {
         addNotification("Limite Quota", "Quota API Gemini esaurita. Controlla il tasto Key in alto.", "info");
       }
-      setError(is429 ? "Quota Esaurita" : "Errore Caricamento");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
+      isFetchingRef.current = false;
     }
-  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification]);
+  }, [thinkingMode, saveToHistory, location, addNotification]);
 
+  // Caricamento iniziale e aggiornamenti reattivi (stabilizzato)
   useEffect(() => {
     loadData(true);
   }, [thinkingMode, location, loadData]);
@@ -297,7 +296,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore. Verifica API Key in alto." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Dati non disponibili o errore API." });
     } finally {
       setPredicting(false);
     }
@@ -567,9 +566,9 @@ const App: React.FC = () => {
       {data?.sources && data.sources.length > 0 && (
         <div className="mt-12 p-8 bg-white rounded-[3rem] border-2 border-emerald-50 shadow-sm">
           <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Search className="w-4 h-4 text-emerald-500" /> Fonti Analizzate</h4>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 overflow-x-auto pb-2 scrollbar-hide">
             {data.sources.map((source, idx) => (
-              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-[1.25rem] text-[11px] font-black uppercase hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm">{source.title || 'Dettaglio'} <ExternalLink className="w-4 h-4" /></a>
+              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 flex items-center gap-3 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-[1.25rem] text-[11px] font-black uppercase hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm">{source.title || 'Dettaglio'} <ExternalLink className="w-4 h-4" /></a>
             ))}
           </div>
         </div>
@@ -579,7 +578,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-emerald-950/80 backdrop-blur-2xl">
            <div className="bg-white w-full max-w-md rounded-[3.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95">
               <div className="bg-emerald-900 p-10 text-white flex justify-between items-center">
-                 <div><h4 className="font-black text-[10px] uppercase text-emerald-400 tracking-[0.3em] mb-2">IA Prediction</h4><p className="font-black text-2xl tracking-tighter truncate max-w-[250px]">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
+                 <div className="max-w-[80%]"><h4 className="font-black text-[10px] uppercase text-emerald-400 tracking-[0.3em] mb-2">IA Prediction</h4><p className="font-black text-2xl tracking-tighter truncate">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
                  <button onClick={() => setPredictModalMatch(null)} className="p-2 hover:bg-emerald-800 rounded-full"><X className="w-8 h-8" /></button>
               </div>
               <div className="p-12 text-center">
