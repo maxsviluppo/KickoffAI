@@ -220,10 +220,15 @@ const App: React.FC = () => {
   };
 
   const leagues = useMemo(() => {
-    if (!data) return [];
+    // Definizione di leghe base per garantire che l'utente veda sempre opzioni
+    const baseLeagues = ['Serie A', 'Premier League', 'La Liga', 'Bundesliga', 'Ligue 1', 'Champions League'];
+    if (!data) return baseLeagues;
+    
     const matchLeagues = data.matches.map(m => m.league);
     const standingLeagues = Object.keys(data.standings);
-    return Array.from(new Set([...matchLeagues, ...standingLeagues])).sort();
+    
+    // Combiniamo leghe base con quelle trovate dall'IA
+    return Array.from(new Set([...baseLeagues, ...matchLeagues, ...standingLeagues])).sort();
   }, [data]);
 
   const filteredStandings = useMemo(() => {
@@ -262,7 +267,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fixed: handleOpenApiKeyDialog handles assumed success and no delay as per guidelines
   const handleOpenApiKeyDialog = async () => {
     if (window.aistudio) {
        await window.aistudio.openSelectKey();
@@ -271,7 +275,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fixed: Added missing handlePlaceBet function
   const handlePlaceBet = useCallback((bet: Bet) => {
     setBalance(prev => {
       const newBalance = prev - bet.amount;
@@ -281,7 +284,6 @@ const App: React.FC = () => {
     addNotification("Scommessa Simulata", `Piazzata giocata di €${bet.amount} su ${bet.matchName}`, "info");
   }, [addNotification]);
 
-  // Fixed: Added missing handleAnalyzeFavorites function
   const handleAnalyzeFavorites = useCallback(async () => {
     if (favorites.length === 0) return;
     setIsAnalyzingHistory(true);
@@ -453,7 +455,6 @@ const App: React.FC = () => {
                       {isAnalyzingHistory ? "Analisi in Corso..." : "Avvia Analisi Storica"}
                    </button>
                 </div>
-                {/* Fixed: Render favorite teams in AI_CHAT tab */}
                 {favorites.length > 0 && (
                    <div className="flex flex-wrap gap-2 mt-6 relative z-10">
                       {favorites.map(f => (
@@ -462,7 +463,6 @@ const App: React.FC = () => {
                    </div>
                 )}
              </div>
-             {/* Fixed: Render historical analysis results */}
              {historicalAnalysis && (
                 <div className="bg-white p-10 rounded-[3rem] border border-emerald-50 shadow-xl animate-in slide-in-from-bottom-4">
                    <div className="flex items-center justify-between mb-8">
@@ -486,8 +486,6 @@ const App: React.FC = () => {
              {favorites.length > 0 ? (
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {favorites.map(team => {
-                    let teamStanding: Standing | undefined;
-                    if (data) (Object.values(data.standings) as Standing[][]).forEach((leagueTeams: Standing[]) => { const found = leagueTeams.find(t => t.team === team); if (found) teamStanding = found; });
                     return <div key={team} className="bg-white p-6 rounded-3xl border border-emerald-50 shadow-sm flex items-center justify-between">
                        <div className="flex items-center gap-4">
                           <img src={`https://avatar.vercel.sh/${team}?size=32`} className="w-8 h-8 rounded-lg" alt="" />
