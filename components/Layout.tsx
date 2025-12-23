@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Tab } from '../types';
-import { Trophy, Star, Radio, TrendingUp, BrainCircuit, History, Wallet, Settings, Key } from 'lucide-react';
+import { Trophy, Star, Radio, TrendingUp, BrainCircuit, History, Wallet, Settings, Key, Info } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,6 +13,20 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, lastUpdated, balance }) => {
   const [isPulsing, setIsPulsing] = useState(false);
+  const [hasKey, setHasKey] = useState(true);
+
+  const checkKey = useCallback(async () => {
+    if (window.aistudio) {
+        const ok = await window.aistudio.hasSelectedApiKey();
+        setHasKey(ok);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkKey();
+    const interval = setInterval(checkKey, 5000);
+    return () => clearInterval(interval);
+  }, [checkKey]);
 
   useEffect(() => {
     if (balance !== undefined) {
@@ -25,6 +39,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
   const handleOpenKey = async () => {
     if (window.aistudio) {
         await window.aistudio.openSelectKey();
+        setHasKey(true);
     }
   };
 
@@ -41,24 +56,43 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
           </div>
           
           <div className="flex items-center gap-3">
-            <button 
-                onClick={handleOpenKey}
-                className="bg-emerald-700/50 p-2.5 rounded-2xl border border-emerald-600 text-lime-400 hover:bg-emerald-600 transition-all shadow-inner group"
-                title="Inserisci Chiave API Personale"
-            >
-                <Key className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            </button>
+            <div className="relative group">
+                <button 
+                    onClick={handleOpenKey}
+                    className={`p-2.5 rounded-2xl border transition-all shadow-inner relative ${
+                        hasKey 
+                        ? 'bg-emerald-700/50 border-emerald-600 text-lime-400 hover:bg-emerald-600' 
+                        : 'bg-red-500/20 border-red-500 text-red-400 animate-pulse'
+                    }`}
+                    title="Configura API Key"
+                >
+                    <Key className="w-5 h-5" />
+                    {!hasKey && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-emerald-800"></span>}
+                </button>
+                
+                {/* Tooltip / Mini Guide */}
+                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-emerald-100 p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] text-slate-800">
+                    <p className="text-[10px] font-black uppercase text-emerald-600 mb-2 flex items-center gap-2">
+                        <Info className="w-3 h-3" /> Guida API Gemini
+                    </p>
+                    <p className="text-[11px] font-medium leading-relaxed mb-3">
+                        Per dati real-time e analisi IA illimitate, clicca per selezionare una chiave API personale (Pay-as-you-go raccomandata).
+                    </p>
+                    <a 
+                      href="https://ai.google.dev/gemini-api/docs/billing" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-black text-emerald-600 hover:underline uppercase flex items-center gap-1"
+                    >
+                        Info Fatturazione <ExternalLink className="w-2 h-2" />
+                    </a>
+                </div>
+            </div>
 
             {balance !== undefined && (
               <div className={`bg-emerald-700/50 px-4 py-2 rounded-2xl border border-emerald-600 flex items-center gap-3 shadow-inner transition-all ${isPulsing ? 'animate-balance-ping border-lime-400 bg-emerald-600' : ''}`}>
                 <div className={`p-1.5 rounded-lg transition-colors ${isPulsing ? 'bg-white' : 'bg-lime-400'}`}><Wallet className={`w-3.5 h-3.5 transition-colors ${isPulsing ? 'text-emerald-600' : 'text-emerald-900'}`} /></div>
                 <div><p className={`text-[8px] font-black uppercase leading-none mb-0.5 transition-colors ${isPulsing ? 'text-white' : 'text-lime-400'}`}>Saldo Virtuale</p><p className="text-sm font-black font-mono">€{balance.toFixed(2)}</p></div>
-              </div>
-            )}
-            
-            {lastUpdated && (
-              <div className="text-right hidden sm:block bg-emerald-900/50 px-3 py-1 rounded-full border border-emerald-700">
-                <p className="text-[10px] font-bold text-lime-400 uppercase">Live Dati</p><p className="text-xs font-mono">{lastUpdated}</p>
               </div>
             )}
           </div>
@@ -69,7 +103,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
         <div className="flex justify-around min-w-[700px]">
           <NavButton active={activeTab === Tab.LIVE} onClick={() => setActiveTab(Tab.LIVE)} icon={<Radio className="w-4 h-4" />} label="Live" />
           <NavButton active={activeTab === Tab.STANDINGS} onClick={() => setActiveTab(Tab.STANDINGS)} icon={<TrendingUp className="w-4 h-4" />} label="Classifiche" />
-          <NavButton active={activeTab === Tab.HISTORY} onClick={() => setActiveTab(Tab.HISTORY)} icon={<History className="w-4 h-4" />} label="Cronologia" />
           <NavButton active={activeTab === Tab.FAVORITES} onClick={() => setActiveTab(Tab.FAVORITES)} icon={<Star className="w-4 h-4" />} label="Mie Squadre" />
           <NavButton active={activeTab === Tab.AI_CHAT} onClick={() => setActiveTab(Tab.AI_CHAT)} icon={<BrainCircuit className="w-4 h-4" />} label="IA Stats" />
           <NavButton active={activeTab === Tab.SETTINGS} onClick={() => setActiveTab(Tab.SETTINGS)} icon={<Settings className="w-4 h-4" />} label="Config" />
@@ -79,11 +112,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, last
       <main className="flex-1 p-4 md:p-8 bg-green-50/30">{children}</main>
 
       <footer className="bg-emerald-900 p-8 border-t border-emerald-800 text-emerald-200 text-center text-sm">
-        <p className="font-medium italic">Powered by Gemini AI - Dati in tempo reale tramite Google Search Grounding</p>
+        <p className="font-medium italic">Powered by Gemini AI - Dati in tempo reale</p>
       </footer>
     </div>
   );
 };
+
+const ExternalLink = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+);
 
 const NavButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
   <button

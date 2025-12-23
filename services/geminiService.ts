@@ -18,7 +18,6 @@ export const fetchSoccerData = async (
   useSearch: boolean = true,
   location?: { lat: number; lng: number }
 ): Promise<SportsData> => {
-  // CRITICAL: Always create instance before use to pick up the updated process.env.API_KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const locationContext = location ? `Coordinate utente: ${location.lat}, ${location.lng}.` : "";
@@ -79,15 +78,36 @@ export const getMatchPrediction = async (home: string, away: string, useThinking
   } catch (error) { throw error; }
 };
 
-export const getHistoricalAnalysis = async (history: HistoricalSnapshot[], useThinking: boolean = false): Promise<string> => {
+export const getHistoricalAnalysis = async (
+  history: HistoricalSnapshot[], 
+  favorites: string[],
+  useThinking: boolean = false
+): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Analizza trend calcistici: ${JSON.stringify(history.slice(0,3))}. Fornisci sintesi tattica in italiano.`;
+  const favoritesCtx = favorites.length > 0 ? `Analizza specificamente queste squadre preferite: ${favorites.join(", ")}.` : "Analizza i trend generali.";
+  
+  const prompt = `
+    Sei un analista tattico senior. Basandoti su questi dati storici recenti: ${JSON.stringify(history.slice(0, 5))}
+    ${favoritesCtx}
+    Fornisci un report dettagliato in Italiano strutturato così:
+    1. RIEPILOGO PRESTAZIONI: Come si sono comportate le squadre preferite negli ultimi snapshot?
+    2. TREND DI FORMA: Chi è in ascesa e chi in difficoltà?
+    3. PROIEZIONI FUTURE: Cosa aspettarsi dai prossimi match basandosi sulla solidità difensiva e realizzativa mostrata?
+    Usa un tono professionale e analitico. Evita discorsi generici.
+  `;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
-      config: { thinkingConfig: { thinkingBudget: useThinking ? 10000 : 0 } }
+      config: { 
+        temperature: 0.7,
+        thinkingConfig: { thinkingBudget: useThinking ? 15000 : 0 } 
+      }
     });
-    return response.text || "Dati insufficienti.";
-  } catch (error) { throw error; }
+    return response.text || "Dati insufficienti per generare un'analisi accurata.";
+  } catch (error) { 
+    console.error("History Analysis Error:", error);
+    throw error; 
+  }
 };

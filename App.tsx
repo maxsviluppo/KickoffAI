@@ -7,17 +7,8 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Lock
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Lock, BarChart3, LineChart, FileSearch, History, Settings
 } from 'lucide-react';
-
-const SOCCER_TIPS = [
-  "L'IA analizza oltre 50 parametri per ogni match.",
-  "La geolocalizzazione sbloccata permette analisi sul meteo locale degli stadi.",
-  "System Test AI: Il motore di ricerca è ora in modalità estesa.",
-  "Gemini usa Google Search per dati real-time.",
-  "Sapevi che il recupero dei dati può richiedere fino a 30s?",
-  "La modalità Deep Analysis attiva il 'pensiero' dell'IA."
-];
 
 declare global {
   interface AIStudio {
@@ -163,35 +154,16 @@ const TeamPerformanceCard: React.FC<{ team: string, standing?: Standing }> = ({ 
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.LIVE);
-  const [historySubTab, setHistorySubTab] = useState<'snapshots' | 'bets'>('snapshots');
   const [data, setData] = useState<SportsData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isQuotaExhausted, setIsQuotaExhausted] = useState<boolean>(false);
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
-  const [currentTip, setCurrentTip] = useState(0);
-  const [retryWithNoSearch, setRetryWithNoSearch] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
-  const [refreshCountdown, setRefreshCountdown] = useState<number>(60);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState('All');
   const [liveOnly, setLiveOnly] = useState(false);
-
-  const checkApiKeyStatus = useCallback(async () => {
-    if (window.aistudio) {
-      const selected = await window.aistudio.hasSelectedApiKey();
-      setHasApiKey(selected);
-      return selected;
-    }
-    return true;
-  }, []);
-
-  useEffect(() => {
-    checkApiKeyStatus();
-  }, [checkApiKeyStatus]);
 
   const [history, setHistory] = useState<HistoricalSnapshot[]>(() => {
     try {
@@ -200,16 +172,8 @@ const App: React.FC = () => {
     } catch { return []; }
   });
 
-  const [betHistory, setBetHistory] = useState<Bet[]>(() => {
-    try {
-      const saved = localStorage.getItem('kickoff_bet_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
   const [historicalAnalysis, setHistoricalAnalysis] = useState<string | null>(null);
   const [isAnalyzingHistory, setIsAnalyzingHistory] = useState(false);
-  const [selectedHistoricalData, setSelectedHistoricalData] = useState<HistoricalSnapshot | null>(null);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     const saved = localStorage.getItem('kickoff_favorites');
@@ -228,19 +192,6 @@ const App: React.FC = () => {
   const [bettingMatch, setBettingMatch] = useState<Match | null>(null);
   const [streamingMatch, setStreamingMatch] = useState<Match | null>(null);
 
-  const saveToHistory = useCallback((newData: SportsData) => {
-    setHistory(prev => {
-      const snapshot: HistoricalSnapshot = {
-        id: Math.random().toString(36).substring(7),
-        timestamp: new Date().toLocaleString('it-IT'),
-        data: newData
-      };
-      const updatedHistory = [snapshot, ...prev].slice(0, 20); 
-      localStorage.setItem('kickoff_history', JSON.stringify(updatedHistory));
-      return updatedHistory;
-    });
-  }, []);
-
   const addNotification = useCallback((title: string, message: string, type: AppNotification['type']) => {
     const newNotif: AppNotification = {
       id: Math.random().toString(36).substring(7),
@@ -255,64 +206,51 @@ const App: React.FC = () => {
     }, 6000);
   }, []);
 
-  const handleOpenApiKeyDialog = async () => {
-    try {
-      if (window.aistudio) {
-        await window.aistudio.openSelectKey();
-        // Assume success and proceed per evitare race condition
-        setHasApiKey(true);
-        setIsQuotaExhausted(false);
-        setError(null);
-        setTimeout(() => loadData(true), 1500);
-      }
-    } catch (err) {
-      addNotification("Errore", "Impossibile caricare il selettore.", "info");
-    }
-  };
+  const saveToHistory = useCallback((newData: SportsData) => {
+    setHistory(prev => {
+      const snapshot: HistoricalSnapshot = {
+        id: Math.random().toString(36).substring(7),
+        timestamp: new Date().toLocaleString('it-IT'),
+        data: newData
+      };
+      const updatedHistory = [snapshot, ...prev].slice(0, 20); 
+      localStorage.setItem('kickoff_history', JSON.stringify(updatedHistory));
+      return updatedHistory;
+    });
+  }, []);
 
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
     if ((loading || isRefreshing) && !isInitial) return;
-    
-    if (!isSilent) {
-      const keyOk = await checkApiKeyStatus();
-      if (!keyOk) return;
-    }
 
     if (isSilent) setIsRefreshing(true);
     else setLoading(true);
     setError(null);
 
     try {
-      const result = await fetchSoccerData(thinkingMode, !forceNoSearch && !retryWithNoSearch, location);
+      const result = await fetchSoccerData(thinkingMode, !forceNoSearch, location);
       if (!result || !result.matches) throw new Error("Risposta vuota");
       
       setData(result);
       saveToHistory(result);
       setError(null);
-      setIsQuotaExhausted(false);
-      setRetryWithNoSearch(false);
     } catch (err: any) {
       console.error("Critical Load Error:", err);
       const errorStr = JSON.stringify(err);
       const is429 = errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED");
       
       if (is429) {
-        setIsQuotaExhausted(true);
-        setHasApiKey(false); 
-        setError("Quota API Gemini Esaurita. Seleziona una chiave API personale con fatturazione attiva (Pay-as-you-go).");
-        addNotification("Errore Sistema", "Quota API esaurita.", "info");
-      } else {
-        setError("Errore IA. Verifica la tua configurazione API Key.");
+        addNotification("Allerta Quota", "Quota API Gemini esaurita. Controlla la chiave in alto.", "info");
       }
+      setError(is429 ? "Quota Esaurita" : "Errore Caricamento");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [thinkingMode, saveToHistory, retryWithNoSearch, location, loading, isRefreshing, addNotification, checkApiKeyStatus]);
+  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification]);
 
   useEffect(() => {
-    if (hasApiKey) loadData(true);
-  }, [thinkingMode, location, loadData, hasApiKey]);
+    loadData(true);
+  }, [thinkingMode, location, loadData]);
 
   const toggleFavorite = (team: string) => {
     setFavorites(prev => {
@@ -359,7 +297,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Verifica quota API." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore. Verifica API Key in alto." });
     } finally {
       setPredicting(false);
     }
@@ -371,49 +309,26 @@ const App: React.FC = () => {
       localStorage.setItem('kickoff_balance', newBalance.toString());
       return newBalance;
     });
-    setBetHistory(prev => {
-      const newHist = [bet, ...prev];
-      localStorage.setItem('kickoff_bet_history', JSON.stringify(newHist));
-      return newHist;
-    });
     addNotification("Scommessa", `€${bet.amount} su ${bet.matchName}`, 'info');
   };
 
-  const renderContent = () => {
-    if (!hasApiKey && !loading) {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in zoom-in-95">
-           <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-8 ${isQuotaExhausted ? 'bg-red-100' : 'bg-emerald-100'}`}>
-              {isQuotaExhausted ? <AlertTriangle className="w-12 h-12 text-red-600 animate-pulse" /> : <Lock className="w-12 h-12 text-emerald-600" />}
-           </div>
-           <h2 className="text-3xl font-black text-emerald-950 mb-4 tracking-tighter uppercase">
-             {isQuotaExhausted ? "Quota Esaurita" : "Configurazione API Key"}
-           </h2>
-           <p className="text-slate-600 max-w-md mb-10 leading-relaxed font-medium">
-             Per accedere ai dati live e alle analisi IA, collega la tua chiave API Gemini personale tramite il selettore ufficiale. Se la quota è esaurita, usa un progetto GCP con fatturazione attiva.
-           </p>
-           <div className="flex flex-col gap-4 w-full max-w-xs">
-              <button 
-                onClick={handleOpenApiKeyDialog}
-                className="bg-emerald-600 text-white font-black py-5 rounded-[2.5rem] shadow-2xl shadow-emerald-200 hover:bg-emerald-700 transition-all uppercase text-sm tracking-widest flex items-center justify-center gap-3 active:scale-95"
-              >
-                <Key className="w-6 h-6" /> Seleziona API Key
-              </button>
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <a 
-                  href="https://ai.google.dev/gemini-api/docs/billing" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-[11px] font-black text-emerald-600 uppercase tracking-widest hover:underline flex items-center justify-center gap-2"
-                >
-                  <Info className="w-4 h-4" /> Info Fatturazione API
-                </a>
-              </div>
-           </div>
-        </div>
-      );
+  const handleAnalyzeFavorites = async () => {
+    if (history.length === 0) {
+      addNotification("Dati Mancanti", "Nessuno snapshot storico disponibile.", "info");
+      return;
     }
+    setIsAnalyzingHistory(true);
+    try {
+      const report = await getHistoricalAnalysis(history, favorites, thinkingMode);
+      setHistoricalAnalysis(report);
+    } catch (err) {
+      addNotification("Errore IA", "Impossibile generare l'analisi.", "info");
+    } finally {
+      setIsAnalyzingHistory(false);
+    }
+  };
 
+  const renderContent = () => {
     if (loading && !data) {
       return (
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
@@ -423,15 +338,30 @@ const App: React.FC = () => {
                 <ShieldCheck className="w-12 h-12 text-emerald-600 animate-pulse" />
             </div>
           </div>
-          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter">Sincronizzazione Live...</h3>
+          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter uppercase">Analisi In Corso...</h3>
         </div>
       );
+    }
+
+    if (!data && !loading) {
+       return (
+        <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">
+           Dati non disponibili. Assicurati di aver configurato la API Key correttamente cliccando sulla chiave in alto.
+        </div>
+       )
     }
 
     switch (activeTab) {
       case Tab.LIVE:
         return (
           <div className="space-y-6 animate-in fade-in">
+            <div className="flex items-center justify-between bg-white/50 p-4 rounded-3xl border border-emerald-100 mb-2">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div>
+                <h2 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Campo Live</h2>
+              </div>
+              <button onClick={() => loadData(false)} disabled={loading || isRefreshing} className="p-2 bg-emerald-600 text-white rounded-xl shadow-lg hover:rotate-180 transition-transform duration-500"><RefreshCw className={`w-4 h-4 ${loading || isRefreshing ? 'animate-spin' : ''}`} /></button>
+            </div>
             <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {filteredMatches.map(m => (
@@ -444,7 +374,7 @@ const App: React.FC = () => {
         return (
           <div className="space-y-6 animate-in fade-in">
             <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
-            {(Object.entries(filteredStandings) as [string, Standing[]][]).map(([league, teams]) => (
+            {data && (Object.entries(filteredStandings) as [string, Standing[]][]).map(([league, teams]) => (
                 <div key={league} className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden mb-8">
                   <div className="bg-emerald-900 text-white p-6 font-black text-xs uppercase tracking-widest flex justify-between items-center">
                     <span>{league}</span><Trophy className="w-5 h-5 text-lime-400" />
@@ -467,21 +397,144 @@ const App: React.FC = () => {
               ))}
           </div>
         );
+      case Tab.AI_CHAT:
+        return (
+          <div className="space-y-8 animate-in fade-in pb-12">
+             <div className="bg-emerald-950 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-lime-400/10 blur-[100px] -mr-32 -mt-32"></div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
+                   <div className="space-y-2">
+                      <h3 className="text-4xl font-black flex items-center gap-4 uppercase tracking-tighter">
+                         <Sparkles className="w-10 h-10 text-lime-400 animate-pulse" /> AI Performance Hub
+                      </h3>
+                      <p className="text-emerald-200 text-sm font-medium">Analisi strategica e proiezioni sulle tue squadre del cuore.</p>
+                   </div>
+                   <button 
+                     onClick={handleAnalyzeFavorites} 
+                     disabled={isAnalyzingHistory || favorites.length === 0}
+                     className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-3 ${
+                        isAnalyzingHistory 
+                          ? 'bg-emerald-900 text-emerald-500 cursor-not-allowed' 
+                          : 'bg-lime-400 text-emerald-950 shadow-2xl shadow-lime-500/20 hover:scale-105 active:scale-95'
+                     }`}
+                   >
+                      {isAnalyzingHistory ? <RefreshCw className="w-5 h-5 animate-spin" /> : <BarChart3 className="w-5 h-5" />}
+                      {isAnalyzingHistory ? "Analisi in Corso..." : "Avvia Analisi Storica"}
+                   </button>
+                </div>
+
+                <div className="mt-10 pt-10 border-t border-white/5 flex flex-wrap gap-4">
+                   <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Incluso nel Report:</span>
+                      <div className="flex flex-wrap gap-2">
+                         {favorites.length > 0 ? favorites.map(f => (
+                            <div key={f} className="bg-white/10 px-4 py-2 rounded-xl flex items-center gap-2 border border-white/5">
+                               <img src={`https://avatar.vercel.sh/${f}?size=16`} className="w-4 h-4 rounded" alt="" />
+                               <span className="text-[10px] font-black uppercase text-white">{f}</span>
+                            </div>
+                         )) : (
+                            <p className="text-xs text-emerald-500 italic">Nessuna squadra preferita selezionata.</p>
+                         )}
+                      </div>
+                   </div>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-8">
+                   <div className="bg-white rounded-[3rem] p-10 shadow-xl border border-emerald-50 min-h-[400px] relative">
+                      {!historicalAnalysis && !isAnalyzingHistory && (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-10">
+                            <FileSearch className="w-16 h-16 text-slate-200 mb-6" />
+                            <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">Pronto per l'Analisi</h4>
+                            <p className="text-sm text-slate-500 max-w-sm font-medium">L'IA utilizzerà i tuoi snapshot salvati per rilevare schemi di gioco e prevedere i prossimi esiti.</p>
+                         </div>
+                      )}
+
+                      {isAnalyzingHistory && (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-white/80 backdrop-blur-sm z-20 rounded-[3rem]">
+                            <div className="relative mb-8">
+                               <div className="w-20 h-20 border-[8px] border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
+                               <BrainCircuit className="absolute inset-0 m-auto w-8 h-8 text-emerald-600 animate-pulse" />
+                            </div>
+                            <h4 className="text-xl font-black text-emerald-950 uppercase tracking-tighter">Gemini sta elaborando...</h4>
+                         </div>
+                      )}
+
+                      {historicalAnalysis && (
+                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-50">
+                               <div className="bg-emerald-600 p-2.5 rounded-xl text-white"><LineChart className="w-6 h-6" /></div>
+                               <h4 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Report Strategico IA</h4>
+                            </div>
+                            <div className="prose prose-slate max-w-none text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">
+                               {historicalAnalysis.split('\n').map((line, i) => {
+                                  if (line.match(/^\d\./) || line.includes(':')) {
+                                    return <p key={i} className="font-black text-emerald-900 mt-6 uppercase tracking-tight text-sm flex items-center gap-2">
+                                      <span className="w-1.5 h-1.5 bg-lime-500 rounded-full"></span> {line}
+                                    </p>
+                                  }
+                                  return <p key={i} className="mb-4">{line}</p>
+                               })}
+                            </div>
+                         </div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="lg:col-span-4 space-y-6">
+                   <div className="bg-white rounded-[2.5rem] p-8 shadow-md border border-emerald-50">
+                      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                         <History className="w-4 h-4 text-emerald-500" /> Database Storico
+                      </h5>
+                      <div className="space-y-4">
+                         <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold text-slate-500">Snapshot Salvati:</span>
+                            <span className="font-black text-emerald-600">{history.length} / 20</span>
+                         </div>
+                         <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${(history.length / 20) * 100}%` }}></div>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          </div>
+        );
       case Tab.SETTINGS:
         return (
           <div className="space-y-10 animate-in fade-in">
              <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 p-12 space-y-8">
-                <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 flex flex-col items-center text-center space-y-4">
-                    <Key className="w-12 h-12 text-emerald-600" />
-                    <h3 className="text-xl font-black uppercase tracking-tight">API Key Pro / Test</h3>
-                    <p className="text-sm text-slate-600 max-w-sm">Collega la tua chiave personale per sbloccare i limiti di quota e analizzare i dati live senza interruzioni.</p>
-                    <button onClick={handleOpenApiKeyDialog} className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-emerald-200">Modifica Chiave API</button>
+                <div className="flex flex-col items-center text-center space-y-4">
+                    {/* Fixed: Settings icon was not imported */}
+                    <Settings className="w-12 h-12 text-emerald-600" />
+                    <h3 className="text-xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
+                    <p className="text-sm text-slate-600 max-w-sm">La gestione della API Key è ora centralizzata nel pulsante in alto a destra.</p>
                 </div>
                 <div className="flex justify-center pt-8 border-t border-slate-100">
-                   {/* FIX: Avoid using logical OR on void expressions like localStorage.clear() */}
                    <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="text-red-500 font-black text-[10px] uppercase flex items-center gap-2 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors"><RefreshCw className="w-3 h-3" /> Reset Cache</button>
                 </div>
              </div>
+          </div>
+        );
+      case Tab.FAVORITES:
+        return (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 p-10 rounded-[3rem] text-white flex justify-between items-center shadow-xl">
+                <div><h2 className="text-3xl font-black tracking-tighter uppercase">Le Mie Squadre</h2></div>
+                <Star className="w-12 h-12 text-lime-400 fill-current" />
+             </div>
+             {favorites.length > 0 ? (
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {favorites.map(team => {
+                    let teamStanding: Standing | undefined;
+                    if (data) (Object.values(data.standings) as Standing[][]).forEach((leagueTeams: Standing[]) => { const found = leagueTeams.find(t => t.team === team); if (found) teamStanding = found; });
+                    return <TeamPerformanceCard key={team} team={team} standing={teamStanding} />;
+                  })}
+               </div>
+             ) : (
+               <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">Non hai ancora squadre preferite.</div>
+             )}
           </div>
         );
       default: return null;
@@ -502,34 +555,18 @@ const App: React.FC = () => {
       <div className="mb-8 flex flex-col md:flex-row justify-between items-center bg-emerald-950 p-6 rounded-[2.5rem] border border-emerald-800 shadow-2xl relative overflow-hidden gap-4">
           <div className="flex items-center gap-4 relative z-10">
              <div className={`p-4 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12 shadow-[0_0_20px_rgba(163,230,53,0.5)]' : 'bg-emerald-900 text-emerald-500'}`}><BrainCircuit className="w-8 h-8" /></div>
-             <div><p className="text-white text-[11px] font-black uppercase tracking-[0.2em]">KickOff AI Engine</p><p className="text-emerald-400 text-[10px] font-bold uppercase tracking-tight">Status: {hasApiKey ? 'Attivo' : 'Offline'}</p></div>
+             <div><p className="text-white text-[11px] font-black uppercase tracking-[0.2em]">KickOff AI Engine</p></div>
           </div>
           <div className="flex gap-4 relative z-10 w-full md:w-auto">
             <button onClick={() => setThinkingMode(!thinkingMode)} className={`flex-1 md:flex-none px-8 py-4 rounded-2xl text-[11px] font-black transition-all border-2 uppercase tracking-widest ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950 shadow-lg shadow-lime-500/20' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}>{thinkingMode ? 'Analysis On' : 'Standard'}</button>
-            <button onClick={handleOpenApiKeyDialog} className={`p-4 rounded-2xl transition-all ${isQuotaExhausted ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-900 border border-emerald-800 text-emerald-400 hover:text-lime-400'}`}>
-              <Key className="w-6 h-6" />
-            </button>
           </div>
       </div>
-
-      {(error || isQuotaExhausted) && (
-        <div className="mb-8 bg-red-50 border-2 border-red-200 p-8 rounded-[3rem] flex flex-col md:flex-row items-center justify-between text-red-900 animate-in bounce-in shadow-2xl gap-6">
-          <div className="flex items-center gap-6 text-left">
-            <div className="bg-red-100 p-5 rounded-[1.5rem] text-red-600"><AlertTriangle className="w-10 h-10" /></div>
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.1em]">Allerta Sistema</p>
-              <p className="text-xs font-bold opacity-80 mt-1 leading-relaxed">{error}</p>
-            </div>
-          </div>
-          <button onClick={handleOpenApiKeyDialog} className="px-8 py-5 bg-emerald-600 text-white rounded-[2rem] shadow-xl hover:bg-emerald-700 transition-all font-black text-xs uppercase tracking-widest flex items-center gap-3"><Key className="w-5 h-5" /> Collega API Key</button>
-        </div>
-      )}
 
       {renderContent()}
       
       {data?.sources && data.sources.length > 0 && (
         <div className="mt-12 p-8 bg-white rounded-[3rem] border-2 border-emerald-50 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Search className="w-4 h-4 text-emerald-500" /> Fonti Analizzate (Google Search Grounding)</h4>
+          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><Search className="w-4 h-4 text-emerald-500" /> Fonti Analizzate</h4>
           <div className="flex flex-wrap gap-4">
             {data.sources.map((source, idx) => (
               <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-[1.25rem] text-[11px] font-black uppercase hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm">{source.title || 'Dettaglio'} <ExternalLink className="w-4 h-4" /></a>
@@ -549,7 +586,6 @@ const App: React.FC = () => {
                 {predicting ? (
                   <div className="py-16 flex flex-col items-center gap-6">
                     <div className="w-16 h-16 border-8 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
-                    <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">Analisi...</span>
                   </div>
                 ) : (
                   <div className="space-y-10 animate-in zoom-in">
@@ -570,5 +606,9 @@ const App: React.FC = () => {
     </Layout>
   );
 };
+
+const CheckCircle2 = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+);
 
 export default App;
