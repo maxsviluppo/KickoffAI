@@ -7,7 +7,7 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Lock, BarChart3, LineChart, FileSearch, History, Settings
+  RefreshCw, Trophy, BrainCircuit, X, Star, Sparkles, ChevronRight, MapPin, ShieldCheck, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, Timer, Mail, Info, Key, Lock, BarChart3, LineChart, FileSearch, History, Settings, CheckCircle2
 } from 'lucide-react';
 
 declare global {
@@ -160,10 +160,24 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState('All');
   const [liveOnly, setLiveOnly] = useState(false);
+
+  const checkApiKeyStatus = useCallback(async () => {
+    if (window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(selected);
+      return selected;
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    checkApiKeyStatus();
+  }, [checkApiKeyStatus]);
 
   const [history, setHistory] = useState<HistoricalSnapshot[]>(() => {
     try {
@@ -221,6 +235,13 @@ const App: React.FC = () => {
 
   const loadData = useCallback(async (isInitial = false, forceNoSearch = false, isSilent = false) => {
     if ((loading || isRefreshing) && !isInitial) return;
+    
+    // Controllo silenzioso della chiave prima di procedere
+    const keyOk = await checkApiKeyStatus();
+    if (!keyOk && !isSilent) {
+      addNotification("Azione Necessaria", "Configura la API Key tramite l'icona in alto.", "info");
+      return;
+    }
 
     if (isSilent) setIsRefreshing(true);
     else setLoading(true);
@@ -239,14 +260,14 @@ const App: React.FC = () => {
       const is429 = errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED");
       
       if (is429) {
-        addNotification("Allerta Quota", "Quota API Gemini esaurita. Controlla la chiave in alto.", "info");
+        addNotification("Limite Quota", "Quota API Gemini esaurita. Controlla il tasto Key in alto.", "info");
       }
       setError(is429 ? "Quota Esaurita" : "Errore Caricamento");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification]);
+  }, [thinkingMode, saveToHistory, location, loading, isRefreshing, addNotification, checkApiKeyStatus]);
 
   useEffect(() => {
     loadData(true);
@@ -297,7 +318,7 @@ const App: React.FC = () => {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
     } catch (err: any) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore. Verifica API Key in alto." });
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Verifica API Key tramite l'icona in alto." });
     } finally {
       setPredicting(false);
     }
@@ -345,8 +366,9 @@ const App: React.FC = () => {
 
     if (!data && !loading) {
        return (
-        <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic">
-           Dati non disponibili. Assicurati di aver configurato la API Key correttamente cliccando sulla chiave in alto.
+        <div className="py-20 text-center bg-white/40 rounded-[3rem] border-2 border-dashed border-emerald-100 text-slate-400 font-bold italic flex flex-col items-center gap-4">
+           <AlertTriangle className="w-12 h-12 text-emerald-300" />
+           <p className="max-w-xs">Dati non disponibili. Assicurati di aver configurato la API Key correttamente cliccando sull'icona della chiave nell'intestazione.</p>
         </div>
        )
     }
@@ -497,6 +519,17 @@ const App: React.FC = () => {
                          </div>
                       </div>
                    </div>
+                   
+                   <div className="bg-emerald-50 rounded-[2.5rem] p-8 border border-emerald-100">
+                      <h5 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-4">Metriche Analizzate</h5>
+                      <div className="space-y-2">
+                         {['Trend Punti', 'Efficienza Goal', 'Sequenze Forma', 'Contestualizzazione Leghe'].map(m => (
+                            <div key={m} className="flex items-center gap-2 text-[10px] font-black text-emerald-600 uppercase">
+                               <CheckCircle2 className="w-3.5 h-3.5" /> {m}
+                            </div>
+                         ))}
+                      </div>
+                   </div>
                 </div>
              </div>
           </div>
@@ -506,7 +539,6 @@ const App: React.FC = () => {
           <div className="space-y-10 animate-in fade-in">
              <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 p-12 space-y-8">
                 <div className="flex flex-col items-center text-center space-y-4">
-                    {/* Fixed: Settings icon was not imported */}
                     <Settings className="w-12 h-12 text-emerald-600" />
                     <h3 className="text-xl font-black uppercase tracking-tight">Impostazioni Applicazione</h3>
                     <p className="text-sm text-slate-600 max-w-sm">La gestione della API Key è ora centralizzata nel pulsante in alto a destra.</p>
@@ -606,9 +638,5 @@ const App: React.FC = () => {
     </Layout>
   );
 };
-
-const CheckCircle2 = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
-);
 
 export default App;
