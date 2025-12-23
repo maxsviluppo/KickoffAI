@@ -7,7 +7,7 @@ import LiveStreamModal from './components/LiveStreamModal';
 import { fetchSoccerData, getMatchPrediction, getHistoricalAnalysis } from './services/geminiService';
 import { SportsData, Tab, Standing, AIPrediction, Match, Bet, AppNotification, HistoricalSnapshot, GroundingSource } from './types';
 import { 
-  RefreshCw, Trophy, BrainCircuit, X, Star, Wallet, Sparkles, ChevronRight, RotateCcw, Lightbulb, Power, MapPin, ShieldCheck, Activity, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, ArrowUpRight, TrendingUp, DollarSign, LineChart, Timer
+  RefreshCw, Trophy, BrainCircuit, X, Star, Wallet, Sparkles, ChevronRight, RotateCcw, Lightbulb, Power, MapPin, ShieldCheck, Activity, Volume2, AlertTriangle, ExternalLink, Search, Filter, SlidersHorizontal, Radio, Receipt, Clock, ArrowUpRight, TrendingUp, DollarSign, LineChart, Timer, Settings, Mail, User, Info, Key, Zap
 } from 'lucide-react';
 
 const SOCCER_TIPS = [
@@ -18,6 +18,16 @@ const SOCCER_TIPS = [
   "Sapevi che il recupero dei dati può richiedere fino a 30s?",
   "La modalità Deep Analysis attiva il 'pensiero' dell'IA."
 ];
+
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    aistudio?: AIStudio;
+  }
+}
 
 interface SearchAndFilterProps {
   searchTerm: string;
@@ -97,6 +107,22 @@ const SearchAndFilterControls: React.FC<SearchAndFilterProps> = ({
 
 const TeamPerformanceCard: React.FC<{ team: string, standing?: Standing }> = ({ team, standing }) => {
   const form = standing?.formSequence || ['W', 'D', 'L', 'W', 'W']; 
+  const chartData = useMemo(() => {
+    const pointsMap = { 'W': 3, 'D': 1, 'L': 0 };
+    return form.map(res => pointsMap[res] || 0);
+  }, [form]);
+
+  const width = 120;
+  const height = 40;
+  const padding = 5;
+  const points = useMemo(() => {
+    const step = (width - padding * 2) / (chartData.length - 1);
+    return chartData.map((val, i) => {
+      const x = padding + i * step;
+      const y = height - padding - (val / 3) * (height - padding * 2);
+      return `${x},${y}`;
+    }).join(' ');
+  }, [chartData]);
 
   return (
     <div className="bg-white rounded-[2rem] p-6 border border-emerald-50 shadow-sm hover:shadow-md transition-shadow">
@@ -112,29 +138,22 @@ const TeamPerformanceCard: React.FC<{ team: string, standing?: Standing }> = ({ 
           </div>
         </div>
       </div>
-      
-      <div className="space-y-2">
-        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Performance Recente</p>
-        <div className="flex items-end gap-1.5 h-12">
-          {form.map((res, i) => (
-            <div 
-              key={i} 
-              className={`flex-1 rounded-t-lg transition-all ${
-                res === 'W' ? 'bg-emerald-500 h-full' : 
-                res === 'D' ? 'bg-slate-300 h-2/3' : 
-                'bg-red-400 h-1/3'
-              }`}
-              title={res === 'W' ? 'Vittoria' : res === 'D' ? 'Pareggio' : 'Sconfitta'}
-            ></div>
-          ))}
+      <div className="space-y-3">
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Analisi Trend IA</p>
+        <div className="relative h-14 w-full flex items-center justify-center bg-emerald-50/30 rounded-xl border border-emerald-50/50">
+           <svg width="100%" height="40" viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+              <polyline fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={points} />
+              {chartData.map((val, i) => {
+                const step = (width - padding * 2) / (chartData.length - 1);
+                const x = padding + i * step;
+                const y = height - padding - (val / 3) * (height - padding * 2);
+                return <circle key={i} cx={x} cy={y} r="3" className={`${val === 3 ? 'fill-emerald-600' : val === 1 ? 'fill-slate-400' : 'fill-red-500'}`} />;
+              })}
+           </svg>
         </div>
-        <div className="flex justify-between mt-1">
+        <div className="flex justify-between mt-1 px-1">
           {form.map((res, i) => (
-            <span key={i} className={`text-[8px] font-black ${
-              res === 'W' ? 'text-emerald-600' : 
-              res === 'D' ? 'text-slate-400' : 
-              'text-red-500'
-            }`}>{res}</span>
+            <span key={i} className={`text-[8px] font-black ${res === 'W' ? 'text-emerald-600' : res === 'D' ? 'text-slate-400' : 'text-red-500'}`}>{res}</span>
           ))}
         </div>
       </div>
@@ -149,11 +168,13 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isQuotaExhausted, setIsQuotaExhausted] = useState<boolean>(false);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [currentTip, setCurrentTip] = useState(0);
   const [retryWithNoSearch, setRetryWithNoSearch] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [refreshCountdown, setRefreshCountdown] = useState<number>(30);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState('All');
@@ -164,6 +185,16 @@ const App: React.FC = () => {
     setSelectedLeague('All');
     setLiveOnly(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    let timer: any;
+    if (loading) {
+      timer = setInterval(() => setLoadingSeconds(s => s + 1), 1000);
+    } else {
+      setLoadingSeconds(0);
+    }
+    return () => clearInterval(timer);
+  }, [loading]);
   
   const [history, setHistory] = useState<HistoricalSnapshot[]>(() => {
     try {
@@ -204,7 +235,6 @@ const App: React.FC = () => {
   const [bettingMatch, setBettingMatch] = useState<Match | null>(null);
   const [streamingMatch, setStreamingMatch] = useState<Match | null>(null);
 
-  // Moved saveToHistory declaration here to fix the "used before declaration" error in loadData (previously at line 279)
   const saveToHistory = useCallback((newData: SportsData) => {
     setHistory(prev => {
       const snapshot: HistoricalSnapshot = {
@@ -218,7 +248,6 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Moved addNotification declaration here to be used in geolocation effect
   const addNotification = useCallback((title: string, message: string, type: AppNotification['type']) => {
     const newNotif: AppNotification = {
       id: Math.random().toString(36).substring(7),
@@ -232,6 +261,17 @@ const App: React.FC = () => {
       setActiveNotifications(prev => prev.filter(n => n.id !== newNotif.id));
     }, 6000);
   }, []);
+
+  const handleOpenApiKeyDialog = async () => {
+    try {
+      await window.aistudio?.openSelectKey();
+      setIsQuotaExhausted(false);
+      setError(null);
+      setTimeout(() => loadData(true), 500); 
+    } catch (err) {
+      addNotification("Errore", "Impossibile aprire la selezione chiave.", "info");
+    }
+  };
 
   useEffect(() => {
     if ("geolocation" in navigator) {
@@ -266,8 +306,10 @@ const App: React.FC = () => {
     }
     setError(null);
 
+    // Timeout per ricerca live estesa (90s) o safe mode (25s)
+    const timeoutThreshold = forceNoSearch ? 25000 : 90000;
     const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error("L'IA sta impiegando troppo tempo per la ricerca live.")), 45000)
+      setTimeout(() => reject(new Error("IA_TIMEOUT")), timeoutThreshold)
     );
 
     try {
@@ -281,41 +323,54 @@ const App: React.FC = () => {
       setData(result);
       saveToHistory(result);
       setError(null);
+      setIsQuotaExhausted(false);
       setRetryWithNoSearch(false);
-      setRefreshCountdown(30); // Reset countdown on success
+      setRefreshCountdown(30); 
     } catch (err: any) {
       console.error("Load Error:", err);
-      if (!forceNoSearch && !retryWithNoSearch) {
+      
+      const errorMsg = err?.message || JSON.stringify(err);
+      
+      if (errorMsg === "IA_TIMEOUT" || errorMsg.includes("timeout")) {
+        if (!forceNoSearch) {
+          addNotification("IA Lenta", "Tentativo di caricamento rapido senza ricerca...", "info");
+          setRetryWithNoSearch(true);
+          loadData(false, true, isSilent);
+          return;
+        }
+        setError("L'IA è troppo lenta. Consigliato inserire una API Key personale per sbloccare la priorità.");
+      } else if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        setIsQuotaExhausted(true);
+        setError("Quota IA Esaurita. Per favore inserisci la tua API Key.");
+      } else if (!forceNoSearch && !retryWithNoSearch) {
         setRetryWithNoSearch(true);
         loadData(false, true, isSilent); 
         return;
-      }
-      
-      const cached = localStorage.getItem('kickoff_history');
-      if (cached) {
-        const parsed = JSON.parse(cached) as HistoricalSnapshot[];
-        if (parsed.length > 0) {
-          setData(parsed[0].data);
-          setError("IA Lenta. Utilizzo dati memorizzati.");
-        }
       } else {
-        setError(err.message || "Errore critico IA. Prova il ripristino.");
+        const cached = localStorage.getItem('kickoff_history');
+        if (cached) {
+          const parsed = JSON.parse(cached) as HistoricalSnapshot[];
+          if (parsed.length > 0) {
+            setData(parsed[0].data);
+            setError("Visualizzazione dati in cache per problemi di rete IA.");
+          }
+        } else {
+          setError("Errore critico. Prova a inserire la tua chiave API.");
+        }
       }
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [thinkingMode, saveToHistory, retryWithNoSearch, location, loading, isRefreshing]);
+  }, [thinkingMode, saveToHistory, retryWithNoSearch, location, loading, isRefreshing, addNotification]);
 
-  // Auto-refresh logic for Live Odds (30s)
   useEffect(() => {
     let countdownInterval: any;
-    
-    if (activeTab === Tab.LIVE && !loading && !isRefreshing) {
+    if (activeTab === Tab.LIVE && !loading && !isRefreshing && !isQuotaExhausted) {
         countdownInterval = setInterval(() => {
             setRefreshCountdown(prev => {
                 if (prev <= 1) {
-                    loadData(false, false, true); // Trigger silent refresh
+                    loadData(false, false, true);
                     return 30;
                 }
                 return prev - 1;
@@ -324,9 +379,8 @@ const App: React.FC = () => {
     } else {
         setRefreshCountdown(30);
     }
-
     return () => clearInterval(countdownInterval);
-  }, [activeTab, loading, isRefreshing, loadData]);
+  }, [activeTab, loading, isRefreshing, isQuotaExhausted, loadData]);
 
   useEffect(() => {
     loadData(true);
@@ -355,14 +409,10 @@ const App: React.FC = () => {
   const filteredMatches = useMemo(() => {
     if (!data) return [];
     return data.matches.filter(m => {
-      const matchesSearch = 
-        m.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        m.awayTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.league.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = m.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) || m.awayTeam.toLowerCase().includes(searchTerm.toLowerCase()) || m.league.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesLeague = selectedLeague === 'All' || m.league === selectedLeague;
       const isMatchLive = m.status.toLowerCase().includes('live') || m.status.toLowerCase().includes('in corso');
-      const matchesLive = !liveOnly || isMatchLive;
-      return matchesSearch && matchesLeague && matchesLive;
+      return matchesSearch && matchesLeague && (!liveOnly || isMatchLive);
     });
   }, [data, searchTerm, selectedLeague, liveOnly]);
 
@@ -371,10 +421,7 @@ const App: React.FC = () => {
     const filtered: Record<string, Standing[]> = {};
     Object.entries(data.standings).forEach(([league, teams]) => {
       const leagueMatchesFilter = selectedLeague === 'All' || league === selectedLeague;
-      const filteredTeams = (teams as Standing[]).filter(t => 
-        t.team.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        league.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const filteredTeams = (teams as Standing[]).filter(t => t.team.toLowerCase().includes(searchTerm.toLowerCase()) || league.toLowerCase().includes(searchTerm.toLowerCase()));
       if (leagueMatchesFilter && (filteredTeams.length > 0 || league.toLowerCase().includes(searchTerm.toLowerCase()))) {
         filtered[league] = filteredTeams.length > 0 ? filteredTeams : teams as Standing[];
       }
@@ -388,8 +435,8 @@ const App: React.FC = () => {
     try {
       const res = await getMatchPrediction(home, away, thinkingMode);
       setPrediction(res);
-    } catch (err) {
-      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Errore." });
+    } catch (err: any) {
+      setPrediction({ prediction: "N/D", confidence: "0%", analysis: "Limite IA. Inserire API Key personale." });
     } finally {
       setPredicting(false);
     }
@@ -416,7 +463,7 @@ const App: React.FC = () => {
       const analysis = await getHistoricalAnalysis(history, thinkingMode);
       setHistoricalAnalysis(analysis);
     } catch (err) {
-      setHistoricalAnalysis("Errore.");
+      setHistoricalAnalysis("Errore. API Key personale richiesta per analisi massive.");
     } finally {
       setIsAnalyzingHistory(false);
     }
@@ -434,20 +481,26 @@ const App: React.FC = () => {
             <div className="absolute inset-0 flex items-center justify-center">
                 <ShieldCheck className="w-10 h-10 text-emerald-600 animate-pulse" />
             </div>
-          </div>
-          <div className="bg-emerald-900 text-white px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-4">
-             System Test AI Mode Active
-          </div>
-          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter">Inizializzazione...</h3>
-          <div className="bg-white p-8 rounded-[2.5rem] border border-emerald-100 shadow-2xl max-w-sm mx-auto flex flex-col items-center gap-6">
-            <div className="bg-lime-400 p-4 rounded-2xl shadow-lg shadow-lime-100">
-               <Activity className="w-6 h-6 text-emerald-900" />
+            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-black text-emerald-600 whitespace-nowrap">
+              TEMPO: {loadingSeconds}s
             </div>
+          </div>
+          <h3 className="text-3xl font-black text-emerald-950 mb-6 italic tracking-tighter">Ricerca Live IA...</h3>
+          <div className="bg-white p-8 rounded-[2.5rem] border border-emerald-100 shadow-2xl max-w-sm mx-auto flex flex-col items-center gap-6">
             <p className="text-slate-700 text-sm font-bold leading-relaxed italic">"{SOCCER_TIPS[currentTip]}"</p>
           </div>
-          <div className="mt-12 flex items-center gap-4 justify-center">
-             <button onClick={() => loadData(true, true)} className="bg-emerald-100 text-emerald-700 px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-200 transition-colors">Safe Mode (No Search)</button>
-             <button onClick={resetApp} className="bg-red-50 text-red-600 p-3 rounded-2xl hover:bg-red-100 transition-colors"><Power className="w-5 h-5" /></button>
+          <div className="mt-12 flex flex-col items-center gap-6">
+             <div className="flex gap-4">
+                <button onClick={handleOpenApiKeyDialog} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase shadow-xl flex items-center gap-2">
+                    <Key className="w-4 h-4" /> Inserisci API Key Personale
+                </button>
+                {loadingSeconds > 15 && (
+                  <button onClick={() => loadData(true, true)} className="bg-amber-100 text-amber-700 px-8 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 animate-in fade-in">
+                    <Zap className="w-4 h-4" /> Forza Safe Mode
+                  </button>
+                )}
+             </div>
+             <p className="text-xs text-slate-400 font-medium">Nota: Se l'IA impiega troppo tempo, la tua connessione o i server Gemini potrebbero essere saturi.</p>
           </div>
         </div>
       );
@@ -461,40 +514,17 @@ const App: React.FC = () => {
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 bg-red-600 rounded-full animate-ping"></div>
                 <h2 className="text-xl font-black text-emerald-900 uppercase tracking-tighter">Campo Live</h2>
-                {activeTab === Tab.LIVE && (
-                    <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-                        <Timer className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-emerald-600' : 'text-slate-400'}`} />
-                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-tight">Auto-Refresh Quote: {refreshCountdown}s</span>
-                    </div>
-                )}
+                <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                    <Timer className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-emerald-600' : 'text-slate-400'}`} />
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-tight">Auto-Refresh: {refreshCountdown}s</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                {location && (
-                  <div className="flex items-center gap-1 bg-lime-100 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase">
-                    <MapPin className="w-3 h-3" /> Local Mode
-                  </div>
-                )}
+                {location && <div className="flex items-center gap-1 bg-lime-100 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase"><MapPin className="w-3 h-3" /> Local</div>}
                 <button onClick={() => loadData(false)} disabled={loading || isRefreshing} className="p-2 bg-emerald-600 text-white rounded-xl shadow-lg hover:rotate-180 transition-transform duration-500"><RefreshCw className={`w-4 h-4 ${loading || isRefreshing ? 'animate-spin' : ''}`} /></button>
               </div>
             </div>
-            
-            {/* Refresh Progress Bar (Silent Mode Indicator) */}
-            {isRefreshing && (
-                <div className="w-full h-1 bg-emerald-100 rounded-full overflow-hidden mb-4">
-                    <div className="h-full bg-emerald-600 animate-progress"></div>
-                </div>
-            )}
-
-            <SearchAndFilterControls 
-              searchTerm={searchTerm} 
-              setSearchTerm={setSearchTerm} 
-              selectedLeague={selectedLeague} 
-              setSelectedLeague={setSelectedLeague} 
-              liveOnly={liveOnly} 
-              setLiveOnly={setLiveOnly} 
-              activeTab={activeTab} 
-              leagues={leagues} 
-            />
+            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {filteredMatches.length > 0 ? (
                 filteredMatches.map(m => (
@@ -502,8 +532,7 @@ const App: React.FC = () => {
                 ))
               ) : (
                 <div className="col-span-full py-20 text-center bg-white/40 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
-                  <SlidersHorizontal className="w-12 h-12 text-emerald-100 mx-auto mb-4" />
-                  <p className="text-slate-400 font-bold italic">Nessun match trovato con questi criteri.</p>
+                  <p className="text-slate-400 font-bold italic">Nessun match trovato.</p>
                 </div>
               )}
             </div>
@@ -513,16 +542,7 @@ const App: React.FC = () => {
         return (
           <div className="space-y-6 animate-in fade-in">
             <h2 className="text-xl font-black text-emerald-900 uppercase tracking-tight mb-4">Campionati</h2>
-            <SearchAndFilterControls 
-              searchTerm={searchTerm} 
-              setSearchTerm={setSearchTerm} 
-              selectedLeague={selectedLeague} 
-              setSelectedLeague={setSelectedLeague} 
-              liveOnly={liveOnly} 
-              setLiveOnly={setLiveOnly} 
-              activeTab={activeTab} 
-              leagues={leagues} 
-            />
+            <SearchAndFilterControls searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} liveOnly={liveOnly} setLiveOnly={setLiveOnly} activeTab={activeTab} leagues={leagues} />
             {Object.keys(filteredStandings).length > 0 ? (
               Object.entries(filteredStandings).map(([league, teams]) => (
                 <div key={league} className="bg-white rounded-[2.5rem] shadow-sm border border-emerald-50 overflow-hidden mb-8 animate-in slide-in-from-bottom-4">
@@ -536,7 +556,7 @@ const App: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {(teams as Standing[]).map(t => (
-                          <tr key={t.team} className={`hover:bg-emerald-50/50 transition-colors ${t.team.toLowerCase().includes(searchTerm.toLowerCase()) && searchTerm !== '' ? 'bg-lime-50/50' : ''}`}>
+                          <tr key={t.team} className="hover:bg-emerald-50/50 transition-colors">
                             <td className="p-6 font-bold text-emerald-600">#{t.rank}</td>
                             <td className="p-6 font-black text-slate-800">{t.team}</td>
                             <td className="p-6 text-center font-mono font-bold bg-slate-50/30">{t.points}</td>
@@ -547,12 +567,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ))
-            ) : (
-              <div className="py-20 text-center bg-white/40 rounded-[2.5rem] border-2 border-dashed border-emerald-100">
-                <SlidersHorizontal className="w-12 h-12 text-emerald-100 mx-auto mb-4" />
-                <p className="text-slate-400 font-bold italic">Nessuna classifica trovata per questa ricerca.</p>
-              </div>
-            )}
+            ) : <div className="py-20 text-center bg-white/40 rounded-[2.5rem] border-2 border-dashed border-emerald-100"><p className="text-slate-400 font-bold italic">Nessuna classifica trovata.</p></div>}
           </div>
         );
       case Tab.HISTORY:
@@ -560,49 +575,27 @@ const App: React.FC = () => {
           <div className="space-y-8 animate-in fade-in">
              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex bg-white p-1.5 rounded-2xl border border-emerald-100 shadow-sm w-full md:w-auto">
-                   <button 
-                      onClick={() => setHistorySubTab('snapshots')}
-                      className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${historySubTab === 'snapshots' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400 hover:text-emerald-600'}`}
-                   >
-                     <Clock className="w-3.5 h-3.5" /> Snapshot Dati
-                   </button>
-                   <button 
-                      onClick={() => setHistorySubTab('bets')}
-                      className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${historySubTab === 'bets' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400 hover:text-emerald-600'}`}
-                   >
-                     <Receipt className="w-3.5 h-3.5" /> Schedine
-                   </button>
+                   <button onClick={() => setHistorySubTab('snapshots')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${historySubTab === 'snapshots' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400 hover:text-emerald-600'}`}><Clock className="w-3.5 h-3.5" /> Snapshots</button>
+                   <button onClick={() => setHistorySubTab('bets')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${historySubTab === 'bets' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400 hover:text-emerald-600'}`}><Receipt className="w-3.5 h-3.5" /> Schedine</button>
                 </div>
-                <button onClick={() => { 
-                  if (historySubTab === 'snapshots') { setHistory([]); localStorage.removeItem('kickoff_history'); }
-                  else { setBetHistory([]); localStorage.removeItem('kickoff_bet_history'); }
-                }} className="text-[10px] font-black text-red-500 uppercase px-6 py-2.5 bg-red-50 rounded-xl hover:bg-red-100 transition-colors w-full md:w-auto">Pulisci Registro</button>
              </div>
-
              {historySubTab === 'snapshots' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                    <div className="lg:col-span-1 space-y-3">
-                     {history.length > 0 ? history.map((s: HistoricalSnapshot) => (
-                       <button key={s.id} onClick={() => setSelectedHistoricalData(s)} className={`w-full p-6 rounded-[2rem] border-2 text-left flex justify-between items-center transition-all ${selectedHistoricalData?.id === s.id ? 'bg-emerald-600 text-white border-emerald-500 shadow-xl shadow-emerald-100' : 'bg-white border-slate-100 text-slate-700 hover:border-emerald-200'}`}>
+                     {history.length > 0 ? history.map((s) => (
+                       <button key={s.id} onClick={() => setSelectedHistoricalData(s)} className={`w-full p-6 rounded-[2rem] border-2 text-left flex justify-between items-center transition-all ${selectedHistoricalData?.id === s.id ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-white border-slate-100 text-slate-700 hover:border-emerald-200'}`}>
                          <span className="text-xs font-black uppercase">{s.timestamp}</span>
-                         <ChevronRight className={`w-5 h-5 transition-transform ${selectedHistoricalData?.id === s.id ? 'rotate-90' : ''}`} />
+                         <ChevronRight className="w-5 h-5" />
                        </button>
-                     )) : (
-                       <div className="p-12 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-[2rem] font-bold italic">Nessun dato salvato</div>
-                     )}
+                     )) : <div className="p-12 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-[2rem] font-bold italic">Nessun dato</div>}
                    </div>
                    <div className="lg:col-span-2">
                      {selectedHistoricalData ? (
-                       <div className="bg-white rounded-[2.5rem] p-10 border-2 border-emerald-50 animate-in slide-in-from-right shadow-2xl shadow-emerald-50/50">
-                          <div className="flex items-center gap-3 mb-4">
-                             <RotateCcw className="w-5 h-5 text-emerald-600" />
-                             <p className="text-[10px] font-black text-emerald-600 uppercase">Dati Recuperati</p>
-                          </div>
+                       <div className="bg-white rounded-[2.5rem] p-10 border-2 border-emerald-50 animate-in slide-in-from-right">
                           <p className="text-2xl font-black text-emerald-950 mb-8">{selectedHistoricalData.timestamp}</p>
                           <div className="grid grid-cols-2 gap-4">
                             {Object.entries(selectedHistoricalData.data.standings || {}).map(([league]) => (
                               <div key={league} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
-                                <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
                                 <span className="text-[10px] font-black uppercase text-slate-600">{league}</span>
                               </div>
                             ))}
@@ -612,91 +605,19 @@ const App: React.FC = () => {
                    </div>
                 </div>
              ) : (
-               <div className="space-y-8 animate-in fade-in">
-                  {betHistory.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="bg-white rounded-[2.5rem] p-8 border-2 border-emerald-50 shadow-sm flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
-                                    <DollarSign className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Totale Giocato</p>
-                                    <p className="text-2xl font-black text-emerald-950">€{totalBetAmount.toFixed(2)}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-emerald-900 rounded-[2.5rem] p-8 border-2 border-emerald-800 shadow-xl shadow-emerald-100 flex items-center justify-between text-white">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-emerald-800 text-lime-400 rounded-2xl">
-                                    <TrendingUp className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Potenziale Ritorno</p>
-                                    <p className="text-2xl font-black text-white">€{totalPotentialWin.toFixed(2)}</p>
-                                </div>
-                            </div>
-                        </div>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {betHistory.map((bet) => (
+                    <div key={bet.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-lg p-6 relative overflow-hidden group">
+                      <div className="flex justify-between items-start mb-4">
+                          <span className="text-[9px] font-black text-emerald-600 uppercase">TICKET #{bet.id.slice(0,5)}</span>
+                      </div>
+                      <p className="font-black text-sm uppercase leading-tight mb-4">{bet.matchName}</p>
+                      <div className="flex justify-between items-center text-xs pt-4 border-t border-dashed border-slate-100">
+                        <span className="font-black">€{bet.amount.toFixed(2)}</span>
+                        <span className="font-black text-emerald-700">Win: €{bet.potentialWin.toFixed(2)}</span>
+                      </div>
                     </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {betHistory.length > 0 ? betHistory.map((bet) => (
-                      <div key={bet.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-lg overflow-hidden flex flex-col relative group animate-in slide-in-from-bottom-2">
-                          <div className="bg-emerald-900 p-5 text-white">
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">TICKET #{bet.id.slice(0,5)}</span>
-                                <div className="bg-emerald-800/80 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-tighter">Aperto</div>
-                            </div>
-                            <p className="font-black text-sm uppercase leading-tight truncate">{bet.matchName}</p>
-                          </div>
-                          
-                          <div className="p-6 space-y-5 flex-1 relative">
-                            <div className="absolute -top-3 left-0 w-full flex justify-around pointer-events-none opacity-5">
-                                {[...Array(6)].map((_, i) => <div key={i} className="w-6 h-6 bg-slate-900 rounded-full"></div>)}
-                            </div>
-
-                            <div className="flex justify-between items-center">
-                                <div>
-                                  <p className="text-[9px] text-slate-400 font-black uppercase mb-1">Selezione</p>
-                                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-black text-xs border border-emerald-100">{bet.selection}</span>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[9px] text-slate-400 font-black uppercase mb-1">Quota</p>
-                                  <span className="font-mono font-black text-slate-800 text-sm">@{bet.odds.toFixed(2)}</span>
-                                </div>
-                            </div>
-
-                            <div className="pt-4 border-t border-dashed border-slate-100">
-                                <div className="flex justify-between mb-2">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Puntata</span>
-                                  <span className="text-xs font-black text-slate-800">€{bet.amount.toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between items-center pt-2">
-                                  <span className="text-[10px] font-black text-emerald-600 uppercase">Vincita</span>
-                                  <div className="flex flex-col items-end">
-                                      <span className="text-lg font-black text-emerald-700 leading-none">€{bet.potentialWin.toFixed(2)}</span>
-                                  </div>
-                                </div>
-                            </div>
-                            
-                            <div className="pt-4 flex items-center justify-between text-[8px] font-black text-slate-300 uppercase italic">
-                                <span>{new Date(bet.timestamp).toLocaleDateString()}</span>
-                                <span>{new Date(bet.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Receipt className="w-24 h-24 rotate-12" />
-                          </div>
-                      </div>
-                    )) : (
-                      <div className="col-span-full py-24 text-center border-2 border-dashed border-emerald-100 rounded-[3rem]">
-                          <Receipt className="w-12 h-12 text-emerald-100 mx-auto mb-4" />
-                          <p className="text-slate-400 font-bold italic">Piazza la tua prima scommessa virtuale per iniziare la cronologia.</p>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                </div>
              )}
           </div>
@@ -705,18 +626,13 @@ const App: React.FC = () => {
         return (
           <div className="space-y-8 animate-in fade-in">
              <div className="bg-emerald-950 p-12 rounded-[3rem] text-white shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-800/20 blur-[100px] rounded-full"></div>
-                <h3 className="text-4xl font-black mb-6 flex items-center gap-4">
-                  <Sparkles className="w-10 h-10 text-lime-400 animate-pulse" /> Tactical Engine
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                <h3 className="text-4xl font-black mb-6 flex items-center gap-4"><Sparkles className="w-10 h-10 text-lime-400 animate-pulse" /> Tactical Engine</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="space-y-4">
-                      <p className="text-emerald-200 text-sm font-medium leading-relaxed">Analisi avanzata basata sulla geolocalizzazione e sui trend storici del database locale.</p>
-                      <button onClick={handleAnalyzeHistory} disabled={isAnalyzingHistory || history.length < 2} className="w-full bg-lime-400 text-emerald-950 font-black py-5 rounded-[2rem] text-xs uppercase hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shadow-2xl shadow-lime-500/20">{isAnalyzingHistory ? "Processing Data..." : "Avvia Analisi Predittiva"}</button>
+                      <p className="text-emerald-200 text-sm font-medium">Analisi avanzata trend storici.</p>
+                      <button onClick={handleAnalyzeHistory} disabled={isAnalyzingHistory || history.length < 2} className="w-full bg-lime-400 text-emerald-950 font-black py-5 rounded-[2rem] text-xs uppercase shadow-2xl shadow-lime-500/20">{isAnalyzingHistory ? "Analisi..." : "Avvia Predizione Storica"}</button>
                    </div>
-                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm leading-relaxed text-emerald-50 border border-white/5 shadow-inner italic">
-                     {historicalAnalysis || "Database insufficiente. Salva almeno 2 istantanee del campo per sbloccare l'IA."}
-                   </div>
+                   <div className="bg-white/10 backdrop-blur-md p-8 rounded-[2rem] text-sm text-emerald-50 italic border border-white/5">{historicalAnalysis || "Sincronizza almeno 2 snapshots per sbloccare l'analisi."}</div>
                 </div>
              </div>
           </div>
@@ -725,145 +641,101 @@ const App: React.FC = () => {
         return (
           <div className="space-y-10 animate-in fade-in">
              <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 p-10 rounded-[3rem] text-white flex justify-between items-center shadow-xl">
-                <div>
-                  <h2 className="text-3xl font-black tracking-tighter uppercase">Squadre del Cuore</h2>
-                  <p className="text-emerald-400 text-[10px] font-black uppercase mt-1">Sincronizzate con System Test AI</p>
-                </div>
+                <div><h2 className="text-3xl font-black tracking-tighter uppercase">Squadre del Cuore</h2></div>
                 <Star className="w-12 h-12 text-lime-400 fill-current animate-spin-slow" />
              </div>
-
-             {favorites.length > 0 && (
-               <div className="space-y-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <LineChart className="w-4 h-4 text-emerald-600" />
-                    <h3 className="text-xs font-black uppercase text-emerald-900 tracking-widest">Analisi Rendimento</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {favorites.map(team => {
-                      let teamStanding: Standing | undefined;
-                      if (data) {
-                        Object.values(data.standings).forEach((leagueTeams: Standing[]) => {
-                          const found = leagueTeams.find(t => t.team === team);
-                          if (found) teamStanding = found;
-                        });
-                      }
-                      return <TeamPerformanceCard key={team} team={team} standing={teamStanding} />;
-                    })}
-                  </div>
-               </div>
-             )}
-
-             <div className="space-y-4">
-               <div className="flex items-center gap-2 mb-2">
-                 <Radio className="w-4 h-4 text-emerald-600" />
-                 <h3 className="text-xs font-black uppercase text-emerald-900 tracking-widest">Match Correlati</h3>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {data?.matches.filter(m => favorites.includes(m.homeTeam) || favorites.includes(m.awayTeam)).map(m => (
-                      <MatchCard key={m.id} match={m} onPredict={handlePredict} onBet={setBettingMatch} onWatchLive={setStreamingMatch} isFavoriteHome={favorites.includes(m.homeTeam)} isFavoriteAway={favorites.includes(m.awayTeam)} onToggleFavorite={toggleFavorite} showOdds={true} />
-                  ))}
-               </div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {favorites.map(team => {
+                  let teamStanding: Standing | undefined;
+                  if (data) Object.values(data.standings).forEach((leagueTeams: Standing[]) => { const found = leagueTeams.find(t => t.team === team); if (found) teamStanding = found; });
+                  return <TeamPerformanceCard key={team} team={team} standing={teamStanding} />;
+                })}
              </div>
-
-             {favorites.length === 0 && (
-                <div className="col-span-full py-24 text-center border-2 border-dashed border-emerald-100 rounded-[3rem]">
-                  <Star className="w-12 h-12 text-emerald-100 mx-auto mb-4" />
-                  <p className="text-slate-400 font-bold italic">Nessuna squadra preferita. Clicca sulla stella nei match!</p>
+          </div>
+        );
+      case Tab.SETTINGS:
+        return (
+          <div className="space-y-10 animate-in fade-in">
+             <div className="bg-white rounded-[3rem] shadow-xl border border-emerald-50 overflow-hidden p-12 space-y-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                   <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 space-y-4">
+                      <div className="flex items-center gap-3 mb-2"><Key className="w-5 h-5 text-emerald-600" /><h4 className="text-sm font-black uppercase text-emerald-900 tracking-tight">Gestione API Key Personale</h4></div>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">L'inserimento di una chiave personale risolve gli errori di timeout e quota esaurita.</p>
+                      <button onClick={handleOpenApiKeyDialog} className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl text-[10px] uppercase shadow-lg shadow-emerald-100">Collega API Key</button>
+                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="block text-center text-[9px] font-bold text-emerald-500 uppercase hover:underline">Link Billing Documentazione</a>
+                   </div>
+                   <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-4">
+                      <div className="flex items-center gap-3 mb-2"><Info className="w-5 h-5 text-slate-600" /><h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">Info Sviluppo</h4></div>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">Creato da Castro Massimo per un'esperienza calcistica IA definitiva.</p>
+                      <a href="mailto:castromassimo@gmail.com" className="w-full bg-white border border-slate-200 text-slate-800 font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2"><Mail className="w-4 h-4" /> Supporto Tecnico</a>
+                   </div>
                 </div>
-             )}
+             </div>
           </div>
         );
     }
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} lastUpdated={data?.lastUpdated}>
-      {error && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 p-5 rounded-[2rem] flex items-center justify-between text-amber-900 animate-in bounce-in shadow-lg shadow-amber-100/50">
-          <div className="flex items-center gap-4">
-            <div className="bg-amber-100 p-2 rounded-xl text-amber-600"><AlertTriangle className="w-5 h-5" /></div>
-            <p className="text-xs font-black uppercase tracking-tight">{error}</p>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} lastUpdated={data?.lastUpdated} balance={balance}>
+      <div className="fixed top-24 right-6 z-[200] space-y-3 max-w-[280px]">
+        {activeNotifications.map(n => (
+          <div key={n.id} className="p-4 rounded-[2rem] shadow-2xl bg-white border-2 border-emerald-100 flex items-center gap-4 animate-in slide-in-from-right"><Volume2 className="w-5 h-5 text-emerald-600" /><p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{n.message}</p></div>
+        ))}
+      </div>
+
+      <div className="mb-8 flex justify-between items-center bg-emerald-950 p-6 rounded-[2.5rem] border border-emerald-800 shadow-2xl relative overflow-hidden">
+          <div className="flex items-center gap-4 relative z-10">
+             <div className={`p-3 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12' : 'bg-emerald-900 text-emerald-500'}`}><BrainCircuit className="w-6 h-6" /></div>
+             <div><p className="text-white text-[10px] font-black uppercase tracking-[0.2em]">Analisi Tattica IA</p><p className="text-emerald-400 text-[9px] font-bold uppercase">{location ? 'Localizzazione OK' : 'GPS in attesa...'}</p></div>
           </div>
-          <div className="flex gap-3">
-             <button onClick={() => loadData(true)} className="p-3 bg-white text-emerald-600 rounded-xl shadow-sm hover:bg-emerald-50 transition-colors"><RotateCcw className="w-5 h-5" /></button>
-             <button onClick={resetApp} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"><Power className="w-5 h-5" /></button>
+          <div className="flex gap-3 relative z-10">
+            <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-8 py-3 rounded-2xl text-[10px] font-black transition-all border-2 ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}>{thinkingMode ? 'DEEP MODE ON' : 'IA STANDARD'}</button>
+            <button onClick={handleOpenApiKeyDialog} className={`p-3 rounded-2xl transition-all ${error ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-900 border border-emerald-800 text-emerald-400 hover:text-lime-400'}`} title="Inserisci API Key">
+              <Key className="w-5 h-5" />
+            </button>
+          </div>
+      </div>
+
+      {error && (
+        <div className="mb-6 bg-red-50 border-2 border-red-200 p-6 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between text-red-900 animate-in bounce-in shadow-xl gap-4">
+          <div className="flex items-center gap-5">
+            <div className="bg-red-100 p-4 rounded-2xl text-red-600"><AlertTriangle className="w-8 h-8" /></div>
+            <div><p className="text-sm font-black uppercase tracking-tight">Errore di Caricamento</p><p className="text-xs font-medium opacity-80">{error}</p></div>
+          </div>
+          <div className="flex gap-3 w-full md:w-auto">
+             <button onClick={handleOpenApiKeyDialog} className="flex-1 md:flex-none px-8 py-4 bg-emerald-600 text-white rounded-2xl shadow-lg hover:bg-emerald-700 transition-all font-black text-[10px] uppercase flex items-center justify-center gap-2"><Key className="w-4 h-4" /> Inserisci la tua API Key</button>
+             <button onClick={() => loadData(true)} className="p-4 bg-white text-emerald-600 rounded-2xl border border-emerald-100"><RefreshCw className="w-5 h-5" /></button>
           </div>
         </div>
       )}
-
-      <div className="mb-8 flex justify-between items-center bg-emerald-950 p-6 rounded-[2.5rem] border border-emerald-800 shadow-2xl shadow-emerald-900/40 relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-lime-400 via-emerald-500 to-lime-400 animate-shimmer"></div>
-          <div className="flex items-center gap-4 relative z-10">
-             <div className={`p-3 rounded-2xl transition-all duration-700 ${thinkingMode ? 'bg-lime-400 text-emerald-900 rotate-12' : 'bg-emerald-900 text-emerald-500'}`}><BrainCircuit className="w-6 h-6" /></div>
-             <div>
-                <p className="text-white text-[10px] font-black uppercase tracking-[0.2em]">IA System Test Mode</p>
-                <p className="text-emerald-400 text-[9px] font-bold uppercase">{location ? 'Geolocation Active' : 'Waiting GPS...'}</p>
-             </div>
-          </div>
-          <button 
-            onClick={() => setThinkingMode(!thinkingMode)} 
-            className={`px-8 py-3 rounded-2xl text-[10px] font-black transition-all duration-300 relative z-10 border-2 ${thinkingMode ? 'bg-lime-400 border-lime-300 text-emerald-950 shadow-xl shadow-lime-400/30' : 'bg-transparent border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}
-          >
-            {thinkingMode ? 'DEEP ANALYSIS ON' : 'ACTIVATE ENGINE'}
-          </button>
-      </div>
 
       {renderContent()}
       
       {data?.sources && data.sources.length > 0 && (
         <div className="mt-8 p-6 bg-white rounded-[2rem] border border-emerald-50 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Search className="w-3 h-3 text-emerald-500" /> Fonti di Ricerca Live (Gemini Grounding)
-          </h4>
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Search className="w-3 h-3 text-emerald-500" /> Fonti Grounding Google Search</h4>
           <div className="flex flex-wrap gap-3">
             {data.sources.map((source, idx) => (
-              <a 
-                key={idx} 
-                href={source.uri} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100/50"
-              >
-                {source.title || 'Link Fonte'} <ExternalLink className="w-3 h-3" />
-              </a>
+              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors border border-emerald-100/50">{source.title || 'Sito Web'} <ExternalLink className="w-3 h-3" /></a>
             ))}
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-24 right-6 z-[200] space-y-3 max-w-[280px]">
-        {activeNotifications.map(n => (
-          <div key={n.id} className="p-4 rounded-[2rem] shadow-2xl bg-white border-2 border-emerald-100 flex items-center gap-4 animate-in slide-in-from-right duration-500">
-             <div className="bg-emerald-50 p-2 rounded-xl"><Volume2 className="w-5 h-5 text-emerald-600" /></div>
-             <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{n.message}</p>
-          </div>
-        ))}
-      </div>
-
       {predictModalMatch && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-emerald-950/60 backdrop-blur-xl animate-in fade-in">
-           <div className="bg-white w-full max-w-sm rounded-[3rem] overflow-hidden shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] border-2 border-emerald-50">
+           <div className="bg-white w-full max-w-sm rounded-[3rem] overflow-hidden shadow-2xl border-2 border-emerald-50">
               <div className="bg-emerald-900 p-8 text-white flex justify-between items-center">
-                 <div>
-                   <h4 className="font-black text-sm uppercase tracking-widest text-emerald-400">AI Outcome</h4>
-                   <p className="font-black text-xl tracking-tighter truncate max-w-[200px]">{predictModalMatch.home} vs {predictModalMatch.away}</p>
-                 </div>
+                 <div><h4 className="font-black text-sm uppercase text-emerald-400 tracking-widest">IA Tactic</h4><p className="font-black text-xl tracking-tighter truncate max-w-[200px]">{predictModalMatch.home} vs {predictModalMatch.away}</p></div>
                  <button onClick={() => setPredictModalMatch(null)} className="p-2 hover:bg-emerald-800 rounded-full transition-colors"><X className="w-6 h-6" /></button>
               </div>
-              <div className="p-10">
-                {predicting ? (
-                  <div className="py-12 flex flex-col items-center gap-4">
-                    <RefreshCw className="w-10 h-10 text-emerald-600 animate-spin" />
-                    <span className="text-[10px] font-black text-emerald-600 uppercase">Consultando Motore Tattico...</span>
+              <div className="p-10 text-center">
+                {predicting ? <div className="py-12 flex flex-col items-center gap-4"><RefreshCw className="w-10 h-10 text-emerald-600 animate-spin" /><span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Consultando i dati...</span></div> : (
+                  <div className="space-y-8 animate-in zoom-in">
+                    <div className="bg-emerald-50 p-10 rounded-[2.5rem] border-2 border-emerald-100 shadow-inner"><p className="text-4xl font-black text-emerald-950 tracking-tighter">{prediction?.prediction}</p><div className="inline-block px-4 py-1.5 bg-lime-400 text-emerald-950 rounded-full text-[9px] font-black uppercase mt-4">Precisione: {prediction?.confidence}</div></div>
+                    <p className="text-sm text-slate-700 font-bold italic">"{prediction?.analysis}"</p>
                   </div>
-                ) : (
-                    <div className="space-y-8">
-                        <div className="text-center bg-emerald-50 p-10 rounded-[2.5rem] border-2 border-emerald-100 shadow-inner">
-                            <p className="text-4xl font-black text-emerald-950 tracking-tighter">{prediction?.prediction}</p>
-                            <div className="inline-block px-4 py-1.5 bg-lime-400 text-emerald-950 rounded-full text-[9px] font-black uppercase mt-4">{prediction?.confidence} Precision</div>
-                        </div>
-                        <p className="text-sm text-slate-700 leading-relaxed font-bold italic text-center px-4">"{prediction?.analysis}"</p>
-                    </div>
                 )}
               </div>
            </div>

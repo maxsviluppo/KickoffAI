@@ -53,7 +53,8 @@ export enum Tab {
   STANDINGS = 'standings',
   FAVORITES = 'favorites',
   AI_CHAT = 'ai_chat',
-  HISTORY = 'history'
+  HISTORY = 'history',
+  SETTINGS = 'settings'
 }
 
 export interface AIPrediction {

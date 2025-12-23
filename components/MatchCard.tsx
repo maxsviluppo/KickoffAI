@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Match } from '../types';
-import { BrainCircuit, Star, Wallet, PlayCircle, Trophy } from 'lucide-react';
+import { BrainCircuit, Star, Wallet, PlayCircle, Trophy, Share2, Check, CalendarDays } from 'lucide-react';
 
 interface MatchCardProps {
   match: Match;
@@ -25,6 +25,7 @@ const MatchCard: React.FC<MatchCardProps> = ({
   onToggleFavorite 
 }) => {
   const [isPredictingLocal, setIsPredictingLocal] = useState(false);
+  const [showShareFeedback, setShowShareFeedback] = useState(false);
   const isLive = match.status.toLowerCase().includes('live') || match.status.toLowerCase().includes('in corso');
   const isFavoriteMatch = isFavoriteHome || isFavoriteAway;
 
@@ -33,10 +34,62 @@ const MatchCard: React.FC<MatchCardProps> = ({
     setIsPredictingLocal(true);
     onPredict(match.homeTeam, match.awayTeam);
     
-    // Reset animation after 1.5 seconds for visual feedback
     setTimeout(() => {
       setIsPredictingLocal(false);
     }, 1500);
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: 'KickOff AI - Match Day',
+      text: `Guarda il match ${match.homeTeam} vs ${match.awayTeam} su KickOff AI! Risultato attuale: ${match.score}`,
+      url: `https://kickoff-ai.app/match/${match.id}`
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback simulato
+        setShowShareFeedback(true);
+        setTimeout(() => setShowShareFeedback(false), 2000);
+      }
+    } catch (err) {
+      console.log('Errore condivisione:', err);
+    }
+  };
+
+  const handleAddToCalendar = () => {
+    const eventTitle = `${match.homeTeam} vs ${match.awayTeam} - ${match.league}`;
+    const description = `Partita seguita su KickOff AI. Status: ${match.status}. Risultato: ${match.score}`;
+    
+    // Generazione semplificata di un file .ics
+    const now = new Date();
+    const startTime = new Date(now.getTime() + 60 * 60 * 1000); // Default: tra un'ora
+    const endTime = new Date(startTime.getTime() + 105 * 60 * 1000); // Default: durata 1h 45m
+
+    const formatDate = (date: Date) => date.toISOString().replace(/-|:|\.\d+/g, '');
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      `DTSTART:${formatDate(startTime)}`,
+      `DTEND:${formatDate(endTime)}`,
+      `SUMMARY:${eventTitle}`,
+      `DESCRIPTION:${description}`,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', `match_${match.id}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -60,6 +113,23 @@ const MatchCard: React.FC<MatchCardProps> = ({
             {isFavoriteMatch && <Star className="w-3 h-3 fill-current animate-pulse" />}
             {match.league}
           </span>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={handleAddToCalendar}
+              className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all"
+              title="Aggiungi al Calendario"
+            >
+              <CalendarDays className="w-3 h-3" />
+            </button>
+            <button 
+              onClick={handleShare}
+              className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all flex items-center gap-1"
+              title="Condividi Match"
+            >
+              {showShareFeedback ? <Check className="w-3 h-3 text-emerald-600" /> : <Share2 className="w-3 h-3" />}
+              {showShareFeedback && <span className="text-[8px] font-black uppercase">Copiato!</span>}
+            </button>
+          </div>
         </div>
         <span className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${
           isLive
@@ -112,7 +182,7 @@ const MatchCard: React.FC<MatchCardProps> = ({
               }`}
             >
               <BrainCircuit className={`w-3.5 h-3.5 transition-all ${isPredictingLocal ? 'animate-brain-pulse text-lime-400' : ''}`} />
-              IA Predict
+              Predizione IA
             </button>
           )}
           {onBet && (
